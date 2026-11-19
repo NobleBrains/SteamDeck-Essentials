@@ -1,0 +1,87 @@
+# SteamDeck Essentials - To-Do Liste
+
+- [x] **Dynamische stetig steigende Drosselung bei AFK**
+  - Nach 2 Min. (einstellbar in config) sinkt die Framerate sanft um 10% pro Minute, bis zu 80% gedrosselt ist (z. B. von 90 FPS stufenweise auf ~18-20 FPS).
+  - Sofortiges Aufwachen bei jeder Controller-Eingabe (Stick, Button, Touch, Maus, Tastatur) zurück auf volle Leistung.
+  - *Zusätzliche AFK-Stromspar-Maßnahmen:*
+    - Sanftes OLED-Screen-Dimming (spart besonders beim OLED-Deck massiv Akku) mit dezentem Status-Text.
+    - Chunk-Meshing-Threads im Hintergrund auf Idle stellen (1 Thread).
+    - Partikel & Wetter bleiben unberührt (wie gewünscht).
+
+- [x] **Semantische Aktionen & Freie Tastatur-Tasten mit Custom Nickname**
+  - Entkopplung von Standard-Aktionen (Laufen, Springen, Sneaken, Abbauen, Platzieren) von Minecraft-Tastenbelegungen.
+  - Zusätzliche Option: Beliebige Tastatur-Taste (z. B. `P`, `M`, `V`, `F7`) mit eigenem Spitznamen (z. B. „Minimap“, „VoiceChat“) auf jeden Deck-Button legen.
+
+- [x] **Steam Input Hardware-Bridge (Zuordnung für L4, R4, L5, R5)**
+  - Konfigurierbare Zuordnung in der Mod: Welches Signal aus Steam (z. B. `[` für L4, `]` für R4, `\` für L5, `/` für R5) entspricht welcher physischen Rücktaste.
+
+- [x] **Performance Tracking (Debug & Telemetrie-Log)**
+  - Automatische Kategorisierung in 5 Spielmodi (`Moving/Exploring`, `Stationary/Base`, `In Menu`, `Combat/Aiming`, `AFK Throttled`).
+  - Schreibt alle 5 Sekunden Metriken (FPS, Target-FPS, Akku-Watt, Akkustand, Chunks, RAM) nach `.minecraft/steamdeck_perf_log.csv`.
+  - In F3 und im Mod-Menü (Tab "⚡ Akku & Eco") aktivier-/deaktivierbar.
+
+- [x] **Direktionales Haptik-Feedback beim Hotbar-Wechsel**
+  - Präziser, taktiler Haptik-Impuls (LRA-Aktuatoren) auf dem linken Trackpad beim Wechseln nach links und auf dem rechten Trackpad beim Wechseln nach rechts.
+  - Natürliches Scroll-Verhalten beim Halten (sofortiger Wechsel beim ersten Antippen, bei längerem Halten kontinuierliches Durchscrollen).
+  - Ein-/ausschaltbar im Mod-Menü unter „⚡ Akku & Eco“.
+
+- [x] **Joystick Touch (Kapazitiver Stick-Sensor) in Mod & Bridge**
+  - Volle Unterstützung für `LEFT_STICK_TOUCH` und `RIGHT_STICK_TOUCH` (L-Stick Touch / R-Stick Touch).
+  - Konfigurierbar in der Steam Input Bridge (Tab „⚙️ Bridge“) als Tasten sowie direkt als physische Gamepad-Eingaben belegbar in allen Action-Sets.
+
+- [x] **SteamOS Dual-Cursor Trackpad-Tippen (OSK)**
+  - Intuitives Schreiben auf der Bildschirmtastatur mit beiden Daumen über die Trackpads/Sticks wie bei SteamOS.
+  - Zwei simultane Fadenkreuze (Türkis für links, Amber-Gold für rechts) mit Tasten-Hervorhebung.
+  - Sofortiges Auslösen über LT/LB/Linkes Trackpad (linke Tastaturhälfte) bzw. RT/RB/Rechtes Trackpad (rechte Tastaturhälfte) mit direktionalem Haptik-Feedback.
+
+- [x] **UI-Layout-Optimierung & 2-Spalten Bridge-Dashboard**
+  - Dynamische Zeilenhöhe verhindert jegliche Text- oder Button-Überlappung auf dem Handheld-Display.
+  - Sub-Tabs im Aktionsauswahl-Modal (`🎮 Spiel-Aktionen` und `🖱️ Maus & Spezial`) für vollen Zugriff auf Mausklicks (Links, Rechts, Mitte, Shift-Klick).
+  - Kompaktes 2-Spalten-Layout für die Hardware-Bridge (L4/R4, L5/R5, L-Touch/R-Touch).
+
+- [x] **3-Ebenen Radial-Menü auf dem rechten Joystick (Umschalten per R3 / Stick-Klick)**
+  - **Ebene 1 (`🎒 Hotbar 1–9`):** 9 Segmente mit echten 3D-Item-Icons, Stack-Anzahl, Haltbarkeit und sofortiger Live-Auswahl der Slots 1–9.
+  - **Ebene 2 (`🖥️ F-Tasten & Sicht`):** `F1` (HUD), `F2` (Screenshot), `F3` (Debug-Overlay), `F3+2` (FPS/TPS-Graph), `F5` (Perspektive), `F8` (Kino-Kamera), `F3+F4` (Spielmodus), `F3+F6` (Debug-Menü).
+  - **Ebene 3 (`🔧 F3+ Utilities`):** `F3+G` (Chunk-Grenzen), `F3+B` (Hitboxen), `F3+H` (Erweiterte Tooltips), `F3+A` (Chunks neu laden), `F3+N` (Spectator ↔ Kreativ), `F3+D` (Chat leeren), `F3+C` (Koordinaten/TP kopieren), `F3+T` (Texturen neu laden).
+  - **R3 (Rechter Stick-Klick):** Schaltet nahtlos zwischen den 3 Radial-Menüs um (mit Haptik-Klick und HUD-Indikator).
+
+- [x] **Gyro-Fix (Kontextabhängig beim aktiven Ziehen von Bogen/Armbrust/Dreizack/Fernrohr)**
+  - `DsuGyroProvider` blockiert nicht mehr fälschlicherweise andere Sensoren beim Start.
+  - `SDL2GyroProvider` prüft sowohl eingebettete Gamepad-Sensoren als auch eigenständige SDL3-Sensoren.
+  - Während des aktiven Zielens (`isContextuallyAiming`) wird das Radial-Menü automatisch ausgeblendet und der rechte Stick (z. B. für Steam Input „Gyro als Rechter Stick“) mit minimaler Deadzone (2 %) für butterweiches Bogen-Zielen genutzt.
+
+- [x] **Intelligenter Netzbetrieb (AC) vs. Akkubetrieb & Lüfter-Leisemodus (90/60 FPS Target)**
+  - **Netzbetrieb (AC):** AFK-Drosselung (erst nach 4 Min., max. -50 % / min. 40 FPS), OLED-Dimming (erst nach 5 Min., sanfte 30 %) und Menü-Cap (60 FPS statt 30 FPS) sind spürbar entspannter.
+  - **Leiser Lüfter & stabile 90/60 FPS:** `DynamicChunkThreading` bleibt auch im Netzbetrieb aktiv (mit 3 niedrig priorisierten Worker-Threads statt ungedrosselten 8 Threads), ergänzt durch den 90-Hz-Thermal-Cap, sodass das 90-FPS- (OLED) bzw. 60-FPS-Ziel (LCD) konstant erreicht wird, ohne dass das Gebläse hochdreht.
+
+- [x] **Gamemode-Change-Menü (`F3+F4`) per D-Pad oder linkem Joystick bedienen, Bestätigung durch `A`**
+  - In `GameModeSwitcherScreen` wechselt das D-Pad (Links/Rechts/Oben/Unten) oder der linke Joystick (inkl. Auto-Repeat beim Halten und Haptik-Feedback) direkt zwischen Kreativ, Überleben, Abenteuer und Zuschauer; Druck auf `A` bestätigt den Modus und schließt das Menü.
+
+- [x] **Menüpunkte (im Pausemenü und Untermenüs) per linkem Joystick oder D-Pad auswählen, Bestätigung durch `A`**
+  - Vollständige Controller-Navigation durch Pausemenü, Optionen, Untermenüs und das `SteamDeckConfigScreen`-Dashboard mittels linkem Stick oder D-Pad (inkl. Auto-Repeat beim Gedrückthalten) und Bestätigung über `A`.
+  - **SDL3-Mausklick-Fix (`MOUSE_LEFT_CLICK` / `MOUSE_RIGHT_CLICK` / `MOUSE_QUICK_MOVE`):** Korrekte Übergabe der 1-basierten SDL3-Maustasten-Konstanten (`SDL_BUTTON_LEFT = 1`, `SDL_BUTTON_MIDDLE = 2`, `SDL_BUTTON_RIGHT = 3`), sodass `R2`, `L2`, `A`, `X` und `Y` in Inventaren und Menüs zuverlässig klicken.
+
+- [x] **Action-Set Menü-Linksklick-Fix (`MOUSE_LEFT_CLICK`) & SDL3-Scancode-Korrektur**
+  - Jeder auf `MOUSE_LEFT_CLICK` belegte Button löst in Menüs zuverlässig das per Stick/D-Pad fokussierte Widget aus (statt ins Leere an einer veralteten Mausposition zu klicken) und synchronisiert `mouseHandler.onMove` bei Cursor-Navigation.
+  - `DeckButton.RIGHT_TRACKPAD` in SDL3-Polling aufgenommen und `InputConstants.MOD_SHIFT` (3) für `MOUSE_QUICK_MOVE` korrigiert.
+  - Standard-Scancodes für die Steam Input Bridge (`L4=47 '['`, `R4=48 ']'`, `L5=49 '\'`, `R5=56 '/'`, `L3-Touch=104 F13`, `R3-Touch=105 F14`) und Schnell-Presets (`M=16`, `B=5`, `V=25`, `C=6`, `L=15`, `P=19`, `T=23`) auf echte Minecraft 26.3 SDL3-Scancodes umgestellt.
+
+- [x] **Nahtlose Steam-Input-Vorlage (`.vdf`) & 1-Klick In-Game Installer**
+  - `controller_neptune_steamdeck_essentials.vdf` für alle 4 Rücktasten (`L4`, `R4`, `L5`, `R5`) und Trackpad-Klick vorkonfiguriert.
+  - `SteamLayoutInstaller` installiert die Vorlage automatisch beim Spielstart sowie per 1-Klick-Button im Tab `⚙️ Bridge`.
+
+- [x] **Inventar-Slot-Snapping (`AbstractContainerScreen`) & Controller-Button-Legende**
+  - D-Pad und linker Stick springen in Kisten, Inventaren, Öfen und Werkbänken präzise von Slot zu Slot (inkl. Haptik-Tick).
+  - Dezente Button-Legende (`[A] ... • [X] ... • [Y] ... • [B] ... • [D-Pad] Slot-Sprung`) am unteren Bildschirmrand von Inventaren.
+
+- [x] **Frame-synchrones 60/90-Hz Gyro & OSK Dual-Cursor + `TAB` & Deutsche Umlaute**
+  - `GyroManager.update()` und OSK-Dual-Cursor laufen pro Render-Frame (60/90 Hz statt 20 Hz Client-Tick); `DsuGyroProvider` akkumuliert Zwischenpakete verlustfrei (`+=`).
+  - `TAB`-Taste und deutsche Umlaute (`ä`, `ö`, `ü`, `ß` im `?123`-Modus) im Virtual Keyboard ergänzt; ungewolltes Auto-Öffnen im Kreativ-Inventar (`EditBoxMixin`) behoben.
+
+- [x] **Gameplay-Haptik, Low-Battery Eco-Saver & Pause-Menü-Layout-Fix**
+  - Taktiles Feedback beim Spannen von Bogen/Armbrust/Dreizack und Warn-Impuls bei < 10 % Werkzeug-Haltbarkeit.
+  - Automatischer Low-Battery Eco-Saver bei ≤ 20 % (60 FPS) bzw. ≤ 10 % Akku (45 FPS) mit kurzem HUD-Toast.
+  - Batterie-HUD im Pause-Menü nach oben links verschoben (keine Überlappung mehr mit dem `🎮 Controller`-Button).
+
+
+

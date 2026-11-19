@@ -1,0 +1,35 @@
+plugins {
+    id 'java'
+}
+
+group = project.property('maven_group')
+version = "${project.property('mod_version')}+mc${project.property('minecraft_version')}"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+def prismLibraries = file('/var/home/lukhicken/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher/libraries')
+
+dependencies {
+    compileOnly files("$prismLibraries/com/mojang/minecraft/26.3/minecraft-26.3-client.jar")
+    compileOnly fileTree(dir: prismLibraries, include: '**/*.jar')
+    compileOnly fileTree(dir: 'libs/fabric-api', include: '*.jar')
+}
+
+tasks.named('jar') {
+    archiveFileName = "SteamDeckEssentials-${project.version}.jar"
+    destinationDirectory = file("$projectDir")
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.property("minecraft_version")
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+               "minecraft_version": project.property("minecraft_version")
+    }
+}

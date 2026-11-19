@@ -1,0 +1,25 @@
+{
+  "required": true,
+  "package": "com.steamdeck.mc.mixin",
+  "client": [
+    "ChatScreenMixin",
+    "ChatComponentMixin",
+    "CommandSuggestionsMixin",
+    "EditBoxMixin",
+    "TooltipMixin",
+    "FramerateLimitTrackerMixin",
+    "LevelRendererMixin",
+    "PauseScreenMixin",
+    "DebugScreenOverlayMixin",
+    "KeyMappingAccessor",
+    "KeyboardHandlerAccessor",
+    "GameModeSwitcherScreenAccessor",
+    "AbstractContainerScreenAccessor",
+    "AbstractClientPlayerMixin",
+    "HudMixin",
+    "KeyboardHandlerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

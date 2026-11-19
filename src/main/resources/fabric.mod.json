@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "steamdeck_essentials",
+  "version": "${version}",
+  "name": "SteamDeck Essentials",
+  "description": "Comprehensive Steam Deck optimization mod: battery life maximization, native controller & trackpad engine, contextual gyro-aiming, touch OSK & handheld GUI fixes.",
+  "authors": [
+    "lukhicken"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/steamdeck_essentials/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.steamdeck.mc.SteamDeckEssentials"
+    ],
+    "modmenu": [
+      "com.steamdeck.mc.gui.ModMenuIntegration"
+    ]
+  },
+  "mixins": [
+    "steamdeck_essentials.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.17.0",
+    "fabric-api": "*",
+    "minecraft": ">=26.3",
+    "java": ">=25"
+  },
+  "suggests": {
+    "modmenu": "*"
+  }
+}
