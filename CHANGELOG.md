@@ -20,6 +20,16 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.1.1
+
+### Steam Controller (2026) & Steam Deck: korrekte SDL-Tastenbelegung
+* Belegung laut SDL 3.4 (libsdl-org/SDL #15601 / #15612): `TOUCHPAD` = Klick linkes Pad, `MISC2` = Klick rechtes Pad, `MISC3` = Touch linker Stick, `MISC4` = Touch rechter Stick, `MISC1` = QAM, `MISC5/6` = Grip-Sensoren.
+* Vorher war „Trackpad R“ auf `MISC3` gelegt (also auf den Touch des linken Sticks). Dadurch löste das Berühren des linken Sticks einen Sprung aus, während der Klick aufs rechte Pad gar nichts tat. Die Stick-Touch-Belegung lag auf QAM bzw. auf dem Klick rechts.
+* **Neu:** Bei nativen Valve-Controllern steuert das rechte Trackpad in Menüs und Inventaren den Mauszeiger, ein Klick aufs rechte Pad ist Linksklick (Action-Set `MENUS`).
+* Die Diagnose im Log listet jetzt alle Zusatztasten mit ihrer Bedeutung auf.
+
+---
+
 ## 🚀 Version 1.1.0
 
 ### Handheld- & Desktop-Modus

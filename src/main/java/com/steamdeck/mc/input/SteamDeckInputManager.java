@@ -279,9 +279,12 @@ public class SteamDeckInputManager {
                     {SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_PADDLE1, 'L'}, {SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1, 'R'},
                     {SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_PADDLE2, 'l'}, {SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2, 'r'},
                     {SDLGamepad.SDL_GAMEPAD_BUTTON_TOUCHPAD, 'T'}, {SDLGamepad.SDL_GAMEPAD_BUTTON_MISC1, '1'},
-                    {SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2, '2'}, {SDLGamepad.SDL_GAMEPAD_BUTTON_MISC3, '3'}
+                    {SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2, '2'}, {SDLGamepad.SDL_GAMEPAD_BUTTON_MISC3, '3'},
+                    {SDLGamepad.SDL_GAMEPAD_BUTTON_MISC4, '4'}, {SDLGamepad.SDL_GAMEPAD_BUTTON_MISC5, '5'},
+                    {SDLGamepad.SDL_GAMEPAD_BUTTON_MISC6, '6'}
             };
-            String[] names = {"L4", "R4", "L5", "R5", "TOUCHPAD", "MISC1", "MISC2", "MISC3"};
+            String[] names = {"L4", "R4", "L5", "R5", "PadL-Klick", "QAM", "PadR-Klick", "LStick-Touch",
+                    "RStick-Touch", "Grip-L", "Grip-R"};
             for (int i = 0; i < extra.length; i++) {
                 if (SDLGamepad.SDL_GamepadHasButton(handle, extra[i][0])) {
                     if (buttons.length() > 0) buttons.append(',');
@@ -468,7 +471,10 @@ public class SteamDeckInputManager {
         processButton(DeckButton.L3, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_STICK), client, set);
         processButton(DeckButton.R3, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_STICK), client, set);
         processButton(DeckButton.LEFT_TRACKPAD, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_TOUCHPAD), client, set);
-        processButton(DeckButton.RIGHT_TRACKPAD, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC3), client, set);
+        // SDL 3.4 mapping for Steam Deck & Steam Controller 2026 (libsdl-org/SDL #15601, #15612):
+        //   TOUCHPAD = left pad click, MISC2 = right pad click, MISC3 = left stick touch,
+        //   MISC4 = right stick touch, MISC1 = QAM, MISC5/6 = grip sense (Steam Controller only)
+        processButton(DeckButton.RIGHT_TRACKPAD, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2), client, set);
 
         // 7. D-Pad
         processButton(DeckButton.DPAD_UP, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_DPAD_UP), client, set);
@@ -481,8 +487,8 @@ public class SteamDeckInputManager {
         processButton(DeckButton.SELECT, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_BACK), client, set);
 
         // 9. Joystick Capacitive Touch
-        processButton(DeckButton.LEFT_STICK_TOUCH, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC1) || bridgeL3TouchDown, client, set);
-        processButton(DeckButton.RIGHT_STICK_TOUCH, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2) || bridgeR3TouchDown, client, set);
+        processButton(DeckButton.LEFT_STICK_TOUCH, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC3) || bridgeL3TouchDown, client, set);
+        processButton(DeckButton.RIGHT_STICK_TOUCH, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC4) || bridgeR3TouchDown, client, set);
     }
 
     private void pollJoystickFallback(Minecraft client, ActionSet set) {
@@ -993,9 +999,23 @@ public class SteamDeckInputManager {
     private final java.nio.FloatBuffer touchX = org.lwjgl.BufferUtils.createFloatBuffer(1);
     private final java.nio.FloatBuffer touchY = org.lwjgl.BufferUtils.createFloatBuffer(1);
     private final java.nio.FloatBuffer touchPressure = org.lwjgl.BufferUtils.createFloatBuffer(1);
-    private boolean trackpadWasDown = false;
-    private float trackpadLastX = 0.0f;
-    private float trackpadLastY = 0.0f;
+
+    /** Finger tracking state of the right trackpad. Separate instances for camera and menu cursor,
+     *  because the HUD (camera) keeps rendering underneath open screens. */
+    private static final class TrackpadTracker {
+        boolean wasDown = false;
+        float lastX;
+        float lastY;
+
+        void reset() {
+            wasDown = false;
+        }
+    }
+
+    private final TrackpadTracker cameraPad = new TrackpadTracker();
+    private final TrackpadTracker cursorPad = new TrackpadTracker();
+    private double cursorX = -1;
+    private double cursorY = -1;
     private long lastCameraFrameNanos = 0L;
 
     /**
@@ -1018,7 +1038,7 @@ public class SteamDeckInputManager {
         LocalPlayer player = client.player;
         boolean hasScreen = client.gui != null && client.gui.screen() != null;
         if (player == null || hasScreen || !client.mouseHandler.isMouseGrabbed() || !hasController()) {
-            trackpadWasDown = false;
+            cameraPad.reset();
             return;
         }
 
@@ -1048,18 +1068,31 @@ public class SteamDeckInputManager {
         }
 
         // 2. Native right trackpad
-        if (config.nativeTrackpadCamera && activeKind.isNativeValve() && activeGamepadHandle != 0) {
-            pollNativeTrackpadCamera(player, config);
+        if (isNativeTrackpadActive(config)) {
+            float[] d = readRightTrackpadDelta(cameraPad);
+            if (d != null) {
+                markControllerActivity();
+                float scale = TRACKPAD_DEGREES_PER_PAD_WIDTH * config.trackpadSensitivity;
+                player.turn(d[0] * scale * TURN_UNITS_PER_DEGREE, d[1] * scale * TURN_UNITS_PER_DEGREE);
+            }
         } else {
-            trackpadWasDown = false;
+            cameraPad.reset();
         }
     }
 
-    private void pollNativeTrackpadCamera(LocalPlayer player, ModConfig config) {
+    private boolean isNativeTrackpadActive(ModConfig config) {
+        return config.nativeTrackpadCamera && activeKind.isNativeValve() && activeGamepadHandle != 0;
+    }
+
+    /**
+     * Movement of the finger on the right trackpad since the last call, in pad widths
+     * (0..1 coordinates), or null if there was no movement / no finger.
+     */
+    private float[] readRightTrackpadDelta(TrackpadTracker tracker) {
         int pads = SDLGamepad.SDL_GetNumGamepadTouchpads(activeGamepadHandle);
         if (pads <= 0) {
-            trackpadWasDown = false;
-            return;
+            tracker.reset();
+            return null;
         }
         // Two pads: index 1 is the right one. A single reported pad is used as-is.
         int padIndex = pads >= 2 ? 1 : 0;
@@ -1070,26 +1103,55 @@ public class SteamDeckInputManager {
         touchPressure.clear();
         boolean ok = SDLGamepad.SDL_GetGamepadTouchpadFinger(activeGamepadHandle, padIndex, 0,
                 touchDown, touchX, touchY, touchPressure);
-        boolean down = ok && touchDown.get(0) != 0;
-        if (!down) {
-            trackpadWasDown = false;
-            return;
+        if (!ok || touchDown.get(0) == 0) {
+            tracker.reset();
+            return null;
         }
 
         float x = touchX.get(0);
         float y = touchY.get(0);
-        if (trackpadWasDown) {
-            float dx = x - trackpadLastX;
-            float dy = y - trackpadLastY;
-            if (dx != 0.0f || dy != 0.0f) {
-                markControllerActivity();
-                float scale = TRACKPAD_DEGREES_PER_PAD_WIDTH * config.trackpadSensitivity;
-                player.turn(dx * scale * TURN_UNITS_PER_DEGREE, dy * scale * TURN_UNITS_PER_DEGREE);
-            }
+        float[] result = null;
+        if (tracker.wasDown && (x != tracker.lastX || y != tracker.lastY)) {
+            result = new float[]{x - tracker.lastX, y - tracker.lastY};
         }
-        trackpadLastX = x;
-        trackpadLastY = y;
-        trackpadWasDown = true;
+        tracker.lastX = x;
+        tracker.lastY = y;
+        tracker.wasDown = true;
+        return result;
+    }
+
+    /**
+     * Right trackpad moves the mouse cursor in menus/inventories (native Valve controllers only;
+     * with Steam Input the pad already is a mouse). The right pad click is MOUSE_LEFT_CLICK in the
+     * MENUS action set, so pointing and clicking works like on the Deck under Steam.
+     */
+    private void pollTrackpadCursor(Minecraft client) {
+        ModConfig config = ModConfig.getInstance();
+        if (!isNativeTrackpadActive(config) || client.getWindow() == null) {
+            cursorPad.reset();
+            return;
+        }
+        boolean wasTouching = cursorPad.wasDown;
+        float[] d = readRightTrackpadDelta(cursorPad);
+        if (!cursorPad.wasDown) return;
+
+        com.mojang.blaze3d.platform.Window win = client.getWindow();
+        if (!wasTouching || cursorX < 0) {
+            // Finger just landed: continue from the current OS cursor position
+            cursorX = client.mouseHandler.xpos();
+            cursorY = client.mouseHandler.ypos();
+        }
+        if (d == null) return;
+
+        markControllerActivity();
+        // One full swipe across the pad moves the cursor ~80 % of the window width (scaled by sensitivity)
+        double scale = win.getWidth() * 0.8 * config.trackpadSensitivity;
+        cursorX = Math.max(0, Math.min(win.getWidth() - 1, cursorX + d[0] * scale));
+        cursorY = Math.max(0, Math.min(win.getHeight() - 1, cursorY + d[1] * scale));
+
+        SDLMouse.SDL_WarpMouseInWindow(win.handle(), (float) cursorX, (float) cursorY);
+        client.mouseHandler.onMove(win.handle(), cursorX, cursorY, 0.0, 0.0);
+        client.setLastInputType(InputType.MOUSE);
     }
 
     /** Right stick in [-1, 1] from the gamepad or the raw joystick fallback (axes 2/3). */
@@ -1115,7 +1177,12 @@ public class SteamDeckInputManager {
      * Per-frame high-refresh update (60/90 Hz) for smooth OSK dual-cursor reticles.
      */
     public void pollFrame(Minecraft client, float frameDeltaTicks) {
-        if (client == null || !VirtualKeyboard.getInstance().isOpen()) return;
+        if (client == null) return;
+        if (activeGamepadHandle != 0) {
+            SDLGamepad.SDL_UpdateGamepads();
+            pollTrackpadCursor(client);
+        }
+        if (!VirtualKeyboard.getInstance().isOpen()) return;
 
         float speedScale = Math.max(0.15f, Math.min(2.5f, frameDeltaTicks));
         if (activeGamepadHandle != 0) {
