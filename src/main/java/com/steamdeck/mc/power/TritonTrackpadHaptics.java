@@ -75,18 +75,21 @@ public final class TritonTrackpadHaptics {
     }
 
     /**
-     * One-shot haptic on a trackpad. Returns false if no device is set (caller may fall back to rumble).
+     * One-shot haptic on a trackpad, parameterised like Steam Input: {@code intensity} 0..3 and a dB offset.
+     * The gain byte follows steamclient (FINDINGS 6.2): {@code gain = dB - 12 + 3 * intensity} (intensity 1..3),
+     * plus the user's per-pad level (+-6 dB per step around "normal").
+     * Returns false if no device is set (caller may fall back to rumble).
      */
-    public boolean pulse(boolean rightPad, byte command, int gainDb) {
+    public boolean pulse(boolean rightPad, byte command, int intensity, int db) {
         String path = devicePath;
         if (path == null) return false;
 
         int side = rightPad ? 1 : 0;
-        // Per-pad intensity (Steam Input "haptic intensity"): level 0 = off, 3 = normal, +-6 dB per step
         com.steamdeck.mc.config.ModConfig cfg = com.steamdeck.mc.config.ModConfig.getInstance();
         int level = rightPad ? cfg.rightTrackpadHapticLevel : cfg.leftTrackpadHapticLevel;
         if (level <= 0) return true; // silenced on purpose: no rumble fallback either
-        gainDb += (level - 3) * 6;
+        int gain = db - 12 + (intensity >= 1 && intensity <= 3 ? 3 * intensity : 0) + (level - 3) * 6;
+
         long now = System.nanoTime();
         synchronized (lastSendNanos) {
             if (command != COMMAND_CLICK && now - lastSendNanos[side] < MIN_GAP_NANOS) {
@@ -95,7 +98,7 @@ public final class TritonTrackpadHaptics {
             lastSendNanos[side] = now;
         }
 
-        byte[] report = {REPORT_HAPTIC_COMMAND, (byte) side, command, (byte) Math.max(-24, Math.min(12, gainDb))};
+        byte[] report = {REPORT_HAPTIC_COMMAND, (byte) side, command, (byte) Math.max(-30, Math.min(12, gain))};
         writer.execute(() -> write(path, report));
         return true;
     }

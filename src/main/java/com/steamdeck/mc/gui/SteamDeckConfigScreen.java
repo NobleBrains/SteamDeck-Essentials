@@ -318,10 +318,10 @@ public class SteamDeckConfigScreen extends Screen {
         return (row < TRACKPAD_ROWS && inRow <= PAD_ROW_H) ? row : -1;
     }
 
-    /** 1 % steps up to 10 % (where real presses usually are), 5 % steps above. */
+    /** 0.5 % steps up to 20 % (real presses are 5-15 %), 5 % steps above. */
     private static float stepPressure(float value, int delta) {
-        float step = (value < 0.10f || (value <= 0.101f && delta < 0)) ? 0.01f : 0.05f;
-        float next = Math.round((value + delta * step) * 100f) / 100f;
+        float step = (value < 0.20f || (value <= 0.201f && delta < 0)) ? 0.005f : 0.05f;
+        float next = Math.round((value + delta * step) * 200f) / 200f;
         return Math.max(0.01f, Math.min(1.0f, next));
     }
 
@@ -395,7 +395,7 @@ public class SteamDeckConfigScreen extends Screen {
             renderPadModeRow(graphics, font, x, y, rowW, side * 3,
                     padName + " – Klick: " + (pressureMode ? "Druckschwelle (Soft Press)" : "Hardware-Klick"), mouseX, mouseY);
             y += PAD_STEP;
-            renderPadValueRow(graphics, font, x, y, rowW, padName + " – Klickdruck: " + Math.round(threshold * 100) + "%",
+            renderPadValueRow(graphics, font, x, y, rowW, padName + " – Klickdruck: " + String.format(java.util.Locale.ROOT, "%.1f%%", threshold * 100) + (Math.abs(threshold - 0.125f) < 0.001f ? " (Steam)" : ""),
                     pressureMode ? -1 : 0xFF777777, mouseX, mouseY);
             y += PAD_STEP;
             renderPressureMeter(graphics, font, x, y, rowW, PAD_ROW_H, input.getTrackpadPressure(side), threshold,
@@ -466,7 +466,8 @@ public class SteamDeckConfigScreen extends Screen {
 
         // Stick Deadzone
         graphics.fill(x, y, x + rowW, y + rowH, 0xAA161B22);
-        graphics.text(font, "Stick Deadzone: " + Math.round(config.stickDeadzone * 100) + "%", x + 8, y + 4, -1);
+        graphics.text(font, "Stick Deadzone: " + String.format(java.util.Locale.ROOT, "%.1f%%",
+                SteamDeckInputManager.getInstance().getStickDeadzone() * 100) + (config.stickDeadzoneAuto ? " (Auto wie Steam)" : ""), x + 8, y + 4, -1);
         renderSmallButton(graphics, font, x + rowW - 60, y + 1, 26, 14, "-", mouseX, mouseY);
         renderSmallButton(graphics, font, x + rowW - 30, y + 1, 26, 14, "+", mouseX, mouseY);
         y += rowH + 2;
@@ -915,12 +916,12 @@ public class SteamDeckConfigScreen extends Screen {
                 VirtualKeyboard.playClickSound();
             } else if (this.currentTab == 5) {
                 ModConfig cfg = ModConfig.getInstance();
-                cfg.leftTrackpadClickMode = "HARDWARE";
-                cfg.rightTrackpadClickMode = "HARDWARE";
+                cfg.leftTrackpadClickMode = "PRESSURE";
+                cfg.rightTrackpadClickMode = "PRESSURE";
                 cfg.leftTrackpadMode = "BUTTON";
                 cfg.sprintOnForward = false;
-                cfg.leftTrackpadClickPressure = 0.45f;
-                cfg.rightTrackpadClickPressure = 0.45f;
+                cfg.leftTrackpadClickPressure = 0.125f;
+                cfg.rightTrackpadClickPressure = 0.125f;
                 cfg.leftTrackpadHapticLevel = 3;
                 cfg.rightTrackpadHapticLevel = 3;
                 cfg.enableTrackpadClickHaptics = true;
@@ -932,6 +933,7 @@ public class SteamDeckConfigScreen extends Screen {
                 cfg.enableGyroAiming = true;
                 cfg.enable8WayStickMapping = true;
                 cfg.stickDeadzone = 0.25f;
+                cfg.stickDeadzoneAuto = true;
                 cfg.trackpadSensitivity = 1.0f;
                 cfg.steamBridgeKeyL4 = 47; // '[' (SDL3 Scancode 47)
                 cfg.steamBridgeKeyR4 = 48; // ']' (SDL3 Scancode 48)
@@ -1130,12 +1132,14 @@ public class SteamDeckConfigScreen extends Screen {
                 // Deadzone - / +
                 if (mouseY >= y && mouseY <= y + rowH) {
                     if (mouseX >= x + rowW - 60 && mouseX <= x + rowW - 34) {
-                        config.stickDeadzone = Math.max(0.05f, config.stickDeadzone - 0.05f);
+                        config.stickDeadzone = Math.max(0.05f, SteamDeckInputManager.getInstance().getStickDeadzone() - 0.025f);
+                        config.stickDeadzoneAuto = false;
                         config.save();
                         VirtualKeyboard.playClickSound();
                         return true;
                     } else if (mouseX >= x + rowW - 30 && mouseX <= x + rowW - 4) {
-                        config.stickDeadzone = Math.min(0.50f, config.stickDeadzone + 0.05f);
+                        config.stickDeadzone = Math.min(0.50f, SteamDeckInputManager.getInstance().getStickDeadzone() + 0.025f);
+                        config.stickDeadzoneAuto = false;
                         config.save();
                         VirtualKeyboard.playClickSound();
                         return true;

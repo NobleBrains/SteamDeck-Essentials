@@ -26,7 +26,7 @@ public class HapticFeedbackManager {
     public void triggerHotbarHaptic(int direction) {
         if (!ModConfig.getInstance().enableHotbarHaptics) return;
         // Steam Controller 2026: real trackpad actuator tick instead of the grip motors
-        if (TritonTrackpadHaptics.getInstance().pulse(direction > 0, TritonTrackpadHaptics.COMMAND_TICK, 0)) return;
+        if (TritonTrackpadHaptics.getInstance().pulse(direction > 0, TritonTrackpadHaptics.COMMAND_TICK, 2, 0)) return;
         triggerHaptic(direction < 0, direction > 0, (short) 38000, 35);
     }
 
@@ -38,9 +38,10 @@ public class HapticFeedbackManager {
         if (!ModConfig.getInstance().enableTrackpadClickHaptics) return;
         if (!SteamDeckInputManager.getInstance().getActiveKind().isNativeValve()) return;
         // Steam Controller 2026: the actuator inside the pressed trackpad (click on press, soft tick on release)
+        // press: Click, intensity 3, 0 dB · release: Tick, intensity 2, -3 dB
         if (TritonTrackpadHaptics.getInstance().pulse(rightPad,
                 pressed ? TritonTrackpadHaptics.COMMAND_CLICK : TritonTrackpadHaptics.COMMAND_TICK,
-                pressed ? 0 : -6)) {
+                pressed ? 3 : 2, pressed ? 0 : -3)) {
             return;
         }
         short intensity = pressed ? (short) 40000 : (short) 22000;
@@ -53,8 +54,9 @@ public class HapticFeedbackManager {
      * Controller 2026 and falls back to the rumble motor of that side otherwise.
      */
     public void triggerPadHaptic(boolean rightPad, boolean strong, short fallbackIntensity, int fallbackMs) {
+        // strong: Click, intensity 3 · light: Tick, intensity 1, 0 dB (= SteamOS keyboard key change)
         if (TritonTrackpadHaptics.getInstance().pulse(rightPad,
-                strong ? TritonTrackpadHaptics.COMMAND_CLICK : TritonTrackpadHaptics.COMMAND_TICK, 0)) {
+                strong ? TritonTrackpadHaptics.COMMAND_CLICK : TritonTrackpadHaptics.COMMAND_TICK, strong ? 3 : 1, 0)) {
             return;
         }
         triggerHaptic(!rightPad, rightPad, fallbackIntensity, fallbackMs);

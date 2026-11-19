@@ -443,7 +443,7 @@ public class SteamDeckInputManager {
 
         // Left trackpad as click-D-Pad (Steam "D-Pad" mode, requires click): while clicked, the finger
         // position is the movement direction. The stick wins if both are used.
-        if (leftPadDpad && hardLeft && Math.hypot(leftX, leftY) <= cfg.stickDeadzone) {
+        if (leftPadDpad && hardLeft && Math.hypot(leftX, leftY) <= getStickDeadzone()) {
             float px = (padX[0] - 0.5f) * 2.0f;
             float py = (padY[0] - 0.5f) * 2.0f;
             float mag = (float) Math.hypot(px, py);
@@ -454,7 +454,7 @@ public class SteamDeckInputManager {
         }
 
         if (!hasScreen) {
-            if (Math.hypot(leftX, leftY) > ModConfig.getInstance().stickDeadzone) {
+            if (Math.hypot(leftX, leftY) > getStickDeadzone()) {
                 markControllerActivity();
             }
             stickMapper.updateStickInput(client, leftX, leftY);
@@ -559,7 +559,7 @@ public class SteamDeckInputManager {
         float leftY = rawLy < 0 ? (float) rawLy / 32768.0f : (float) rawLy / 32767.0f;
 
         if (!hasScreen) {
-            if (Math.hypot(leftX, leftY) > ModConfig.getInstance().stickDeadzone) {
+            if (Math.hypot(leftX, leftY) > getStickDeadzone()) {
                 markControllerActivity();
             }
             stickMapper.updateStickInput(client, leftX, leftY);
@@ -1228,7 +1228,7 @@ public class SteamDeckInputManager {
         float[] stick = readRightStick();
         boolean aiming = GyroManager.getInstance().isContextuallyAiming(player);
         if (aiming || !config.enableRightStickRadialMenu) {
-            float deadzone = aiming ? 0.02f : Math.max(0.05f, config.stickDeadzone * 0.5f);
+            float deadzone = aiming ? 0.02f : Math.max(0.05f, getStickDeadzone() * 0.5f);
             float mag = (float) Math.hypot(stick[0], stick[1]);
             if (mag > deadzone) {
                 markControllerActivity();
@@ -1381,6 +1381,46 @@ public class SteamDeckInputManager {
         client.setLastInputType(InputType.MOUSE);
     }
 
+    /**
+     * Effective stick deadzone. In auto mode Steam Input's per-controller default is used
+     * (steamclient GetDefaultJoystickDeadzone, FINDINGS 4.1): Steam Controller 2026 4096/32767 = 12.5 %,
+     * Steam Deck 8192 = 25 %. Other controllers use the configured value.
+     */
+    public float getStickDeadzone() {
+        ModConfig c = ModConfig.getInstance();
+        if (c.stickDeadzoneAuto) {
+            if (activeKind == ControllerKind.STEAM_CONTROLLER_2026) return 0.125f;
+            if (activeKind == ControllerKind.STEAM_DECK) return 0.25f;
+        }
+        return c.stickDeadzone;
+    }
+
+    private final java.nio.IntBuffer powerPercent = org.lwjgl.BufferUtils.createIntBuffer(1);
+    private int cachedPowerState = org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_UNKNOWN;
+    private int cachedPowerPercent = -1;
+    private long lastPowerQuery = 0L;
+
+    /**
+     * Battery of the active controller via SDL (for the Steam Controller 2026 SDL parses input report
+     * 0x43: status + percent). Returns {SDL_PowerState, percent or -1}; cached for 2 s.
+     */
+    public int[] getControllerBattery() {
+        long now = System.currentTimeMillis();
+        if (now - lastPowerQuery > 2000L) {
+            lastPowerQuery = now;
+            if (activeGamepadHandle != 0) {
+                powerPercent.clear();
+                powerPercent.put(0, -1);
+                cachedPowerState = SDLGamepad.SDL_GetGamepadPowerInfo(activeGamepadHandle, powerPercent);
+                cachedPowerPercent = powerPercent.get(0);
+            } else {
+                cachedPowerState = org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_UNKNOWN;
+                cachedPowerPercent = -1;
+            }
+        }
+        return new int[]{cachedPowerState, cachedPowerPercent};
+    }
+
     /** Pressure-based trackpad click only for native Valve pads (Steam Input handles it itself otherwise). */
     public boolean isPressureClickActive(int side) {
         ModConfig c = ModConfig.getInstance();
@@ -1449,42 +1489,26 @@ public class SteamDeckInputManager {
         return pressed;
     }
 
-    // Smoothed absolute pad positions for the on-screen keyboard {x, y, landNanos}, null = no finger
-    private final double[][] oskPadSmooth = new double[2][];
-    private long oskLastNanos = 0L;
+    // On-screen keyboard: time of the last touch per pad (SteamOS keeps the pointer 100 ms after lifting)
+    private final long[] oskLastTouchNanos = {0L, 0L};
 
     /**
-     * Absolute trackpad pointers for the on-screen keyboard. Light exponential smoothing (25 ms)
-     * keeps the reticle calm; the first 40 ms after landing are ignored like in the relative tracker.
+     * Absolute trackpad pointers for the on-screen keyboard, like SteamOS (FINDINGS 3): the raw pad
+     * position is mapped linearly onto the pad's half of the keyboard, without smoothing; the pointer
+     * disappears 100 ms after the finger lifts (bridges single dropped touch reports).
      * Typing happens through the pad click (hardware or click pressure) in processButton().
      */
     private void pollTrackpadKeyboard() {
         long now = System.nanoTime();
-        double dt = oskLastNanos == 0L ? 0.016 : Math.max(0.001, Math.min(0.1, (now - oskLastNanos) / 1_000_000_000.0));
-        oskLastNanos = now;
-        double k = 1.0 - Math.exp(-dt / 0.025);
         VirtualKeyboard osk = VirtualKeyboard.getInstance();
-
         for (int side = 0; side < 2; side++) {
-            boolean touching = padPressure[side] >= 0.0f;
-            if (!touching) {
-                oskPadSmooth[side] = null;
+            if (padPressure[side] >= 0.0f) {
+                oskLastTouchNanos[side] = now;
+                markControllerActivity();
+                osk.setPadCursor(side == 1, padX[side], padY[side], true);
+            } else if (now - oskLastTouchNanos[side] > 100_000_000L) {
                 osk.setPadCursor(side == 1, 0, 0, false);
-                continue;
             }
-            double[] st = oskPadSmooth[side];
-            if (st == null) {
-                st = oskPadSmooth[side] = new double[]{padX[side], padY[side], now};
-            }
-            if (now - (long) st[2] < 40_000_000L) {
-                st[0] = padX[side];
-                st[1] = padY[side];
-                continue; // settling: wait before showing/selecting
-            }
-            st[0] += (padX[side] - st[0]) * k;
-            st[1] += (padY[side] - st[1]) * k;
-            markControllerActivity();
-            osk.setPadCursor(side == 1, (float) st[0], (float) st[1], true);
         }
     }
 
@@ -1520,7 +1544,6 @@ public class SteamDeckInputManager {
                 cursorPad.reset();
                 pollTrackpadKeyboard();
             } else {
-                oskPadSmooth[0] = oskPadSmooth[1] = null;
                 pollTrackpadCursor(client);
             }
         }

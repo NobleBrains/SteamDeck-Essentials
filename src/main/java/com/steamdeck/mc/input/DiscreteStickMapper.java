@@ -27,7 +27,7 @@ public class DiscreteStickMapper {
         ModConfig config = ModConfig.getInstance();
         if (!config.enable8WayStickMapping) return;
 
-        Direction8 newDirection = Direction8.fromAnalog(stickX, stickY, config.stickDeadzone);
+        Direction8 newDirection = Direction8.fromAnalog(stickX, stickY, SteamDeckInputManager.getInstance().getStickDeadzone());
 
         if (newDirection != currentDirection) {
             currentDirection = newDirection;

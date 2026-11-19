@@ -22,10 +22,47 @@ public class BatteryHudRenderer {
      */
     public static void renderPauseScreenHud(GuiGraphicsExtractor graphics, int screenWidth, int screenHeight) {
         if (!ModConfig.getInstance().enableBatteryHudInPause) return;
-        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) return;
+        int nextY = 8;
+        if (com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
+            nextY = renderDeviceBatteryPill(graphics);
+        }
+        renderControllerBatteryPill(graphics, nextY);
+    }
+
+    /** Battery of a wireless controller (e.g. Steam Controller 2026), in both device modes. */
+    private static void renderControllerBatteryPill(GuiGraphicsExtractor graphics, int y) {
+        com.steamdeck.mc.input.SteamDeckInputManager input = com.steamdeck.mc.input.SteamDeckInputManager.getInstance();
+        if (!input.hasController()) return;
+        // The Deck's built-in controller has no own battery: the device pill above already covers it
+        if (input.getActiveKind() == com.steamdeck.mc.input.ControllerKind.STEAM_DECK) return;
+        int[] bat = input.getControllerBattery();
+        int state = bat[0];
+        int percent = bat[1];
+        if (state != org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_ON_BATTERY
+                && state != org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_CHARGING
+                && state != org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_CHARGED) {
+            return; // wired without battery / unknown
+        }
+        String text = "🎮 " + (percent >= 0 ? percent + "%" : "?")
+                + (state == org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_CHARGING ? " ⚡" : "")
+                + (state == org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_CHARGED ? " (voll)" : "");
+        Font font = Minecraft.getInstance().font;
+        int pillW = font.width(text) + 12;
+        int pillH = 15;
+        int x = 8;
+        graphics.fill(x, y, x + pillW, y + pillH, 0xCC111822);
+        graphics.fill(x, y, x + pillW, y + 1, 0x9900E5FF);
+        graphics.fill(x, y + pillH - 1, x + pillW, y + pillH, 0x9900E5FF);
+        int col = (percent >= 0 && percent <= 15 && state == org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_ON_BATTERY) ? 0xFFFF5555
+                : (state == org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_CHARGING ? 0xFF55FF55 : 0xFFFFFFFF);
+        graphics.text(font, text, x + 6, y + 4, col);
+    }
+
+    /** Device (Steam Deck) battery pill; returns the y below it. */
+    private static int renderDeviceBatteryPill(GuiGraphicsExtractor graphics) {
 
         BatteryInfo info = BatteryReader.getBatteryInfo();
-        if (!info.isAvailable()) return;
+        if (!info.isAvailable()) return 8;
 
         Minecraft client = Minecraft.getInstance();
         Font font = client.font;
@@ -51,6 +88,7 @@ public class BatteryHudRenderer {
 
         int textCol = info.percent() <= 15 ? 0xFFFF5555 : (info.isCharging() ? 0xFF55FF55 : 0xFFFFFFFF);
         graphics.text(font, hudText, x + padX, y + padY + 1, textCol);
+        return y + pillH + 4;
     }
 
     /**

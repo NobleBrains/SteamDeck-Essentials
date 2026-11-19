@@ -62,7 +62,7 @@ public class VirtualKeyboard {
     // Absolute trackpad typing (SteamOS style): each pad covers its half of the keyboard
     private final boolean[] padTouching = {false, false};
     private final Key[] padHoverKey = {null, null};
-    private static final float KEY_HYSTERESIS = 2.0f; // gui px a finger must leave a key before switching
+    private static final float KEY_HYSTERESIS = 0.0f; // SteamOS: key stays active while the point is inside its rect
 
     public static VirtualKeyboard getInstance() {
         return INSTANCE;
@@ -567,19 +567,23 @@ public class VirtualKeyboard {
             padHoverKey[side] = null;
             return;
         }
+        // SteamOS layout (virtualkeyboard.css): each pad drives a pointer area of 55 % keyboard width,
+        // left 0-55 %, right 45-100 % (10 % overlap in the middle). In the split layout each pad simply
+        // covers its own panel.
         float areaX, areaW;
         if (this.splitMode) {
             areaX = right ? this.rightX : this.leftX;
             areaW = right ? this.rightWidth : this.leftWidth;
         } else {
-            areaW = this.fullWidth / 2.0f;
-            areaX = right ? this.fullX + areaW : this.fullX;
+            areaW = this.fullWidth * 0.55f;
+            areaX = right ? this.fullX + this.fullWidth - areaW : this.fullX;
         }
-        // 8 % margin on the pad: the very edge of a round pad is hard to hit precisely
-        float u = Math.max(0.0f, Math.min(1.0f, (nx - 0.08f) / 0.84f));
-        float v = Math.max(0.0f, Math.min(1.0f, (ny - 0.08f) / 0.84f));
-        float px = areaX + 3 + u * (areaW - 6);
-        float py = this.kbY + 3 + v * (this.kbHeight - 6);
+        // Linear mapping like SteamOS: x in [-1, 1], scaled by TrackPadTypingInputScale and clamped
+        float s = ModConfig.getInstance().oskTrackpadScale;
+        float ux = Math.max(-1.0f, Math.min(1.0f, (nx * 2.0f - 1.0f) * s));
+        float uy = Math.max(-1.0f, Math.min(1.0f, (ny * 2.0f - 1.0f) * s));
+        float px = areaX + areaW * 0.5f * (1.0f + ux);
+        float py = this.kbY + this.kbHeight * 0.5f * (1.0f + uy);
         if (right) {
             this.rightCursorX = px;
             this.rightCursorY = py;

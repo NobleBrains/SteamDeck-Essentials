@@ -60,6 +60,12 @@ public class ModConfig {
 
     // Input & Controller settings
     public float stickDeadzone = 0.25f;
+    // Auto: Steam Input's per-controller default (Steam Controller 2026: 12.5 %, Steam Deck: 25 %, else stickDeadzone)
+    public boolean stickDeadzoneAuto = true;
+    // On-screen keyboard: like SteamOS "TrackPadTypingInputScale" (1.0 .. 2.0); >1 reaches the outer keys earlier
+    public float oskTrackpadScale = 1.0f;
+    // Config format version (for one-time migrations)
+    public int configVersion = 0;
     public boolean enable8WayStickMapping = true;
     public float trackpadSensitivity = 1.0f; // Native trackpad camera: 1.0 = one full swipe across the pad turns ~90 degrees
     public boolean trackpadClickJump = true;
@@ -67,14 +73,17 @@ public class ModConfig {
     // Trackpad click detection (like Steam Input "click pressure"): "HARDWARE" = the pad's own click,
     // "PRESSURE" = click as soon as the measured pressure reaches the threshold below (0..1, per pad)
     public String trackpadClickMode = null; // legacy (1.2.0), migrated to the per-pad values below
-    public String leftTrackpadClickMode = "HARDWARE";
-    public String rightTrackpadClickMode = "HARDWARE";
+    // Default "PRESSURE": the firmware click bit misses about half the presses while the thumb stays
+    // on the pad (SteamlessController measurement, FINDINGS 10.1)
+    public String leftTrackpadClickMode = "PRESSURE";
+    public String rightTrackpadClickMode = "PRESSURE";
     // Left trackpad: "BUTTON" = one button (Trackpad L), "DPAD_MOVE" = click-D-Pad that walks (like Steam's D-Pad mode)
     public String leftTrackpadMode = "BUTTON";
     // Pushing forward (stick or pad D-Pad) also holds sprint (Steam layouts often bind "Ctrl + W" to north)
     public boolean sprintOnForward = false;
-    public float leftTrackpadClickPressure = 0.45f;
-    public float rightTrackpadClickPressure = 0.45f;
+    // Steam Input Soft_Press default activation_threshold 4096/32768 = 12.5 % (= firmware click point)
+    public float leftTrackpadClickPressure = 0.125f;
+    public float rightTrackpadClickPressure = 0.125f;
     // Trackpad haptic intensity per pad: 0 = off, 1 = very weak ... 3 = normal ... 5 = very strong
     public int leftTrackpadHapticLevel = 3;
     public int rightTrackpadHapticLevel = 3;
@@ -161,6 +170,7 @@ public class ModConfig {
             }
         }
         ModConfig config = new ModConfig();
+        config.configVersion = 2;
         config.initDefaultActionSets();
         config.save();
         return config;
@@ -326,6 +336,16 @@ public class ModConfig {
             this.gyroActivation = "ALWAYS";
             this.aimItemsOnly = true;
         }
+        if (this.configVersion < 2) {
+            // 1.4.1: pressure-based clicks and Steam's 12.5 % threshold become the default.
+            // Old built-in defaults (45 % / 30 % from the workshop preset) were far above real presses.
+            if (this.leftTrackpadClickPressure == 0.45f || this.leftTrackpadClickPressure == 0.30f) this.leftTrackpadClickPressure = 0.125f;
+            if (this.rightTrackpadClickPressure == 0.45f || this.rightTrackpadClickPressure == 0.30f) this.rightTrackpadClickPressure = 0.125f;
+            this.leftTrackpadClickMode = "PRESSURE";
+            this.rightTrackpadClickMode = "PRESSURE";
+            this.configVersion = 2;
+        }
+        this.oskTrackpadScale = clamp(this.oskTrackpadScale, 1.0f, 2.0f);
         this.leftTrackpadClickPressure = clamp(this.leftTrackpadClickPressure, 0.01f, 1.0f);
         this.rightTrackpadClickPressure = clamp(this.rightTrackpadClickPressure, 0.01f, 1.0f);
         this.leftTrackpadHapticLevel = Math.max(0, Math.min(5, this.leftTrackpadHapticLevel));

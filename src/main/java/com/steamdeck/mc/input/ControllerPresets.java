@@ -99,11 +99,14 @@ public final class ControllerPresets {
         // Sticks, pads & gyro
         c.enableRightStickRadialMenu = false;     // right joystick = joystick_mouse (camera)
         c.enable8WayStickMapping = true;          // left joystick in D-Pad mode
+        c.stickDeadzoneAuto = true;               // no deadzone set in the layout -> Steam default per controller
         c.sprintOnForward = true;                 // north = LEFT_CONTROL + W / UP
         c.leftTrackpadMode = "DPAD_MOVE";         // group 1: D-Pad (requires click)
-        c.leftTrackpadClickMode = "HARDWARE";
-        c.rightTrackpadClickMode = "PRESSURE";    // group 21: Soft_Press
-        c.rightTrackpadClickPressure = 0.30f;
+        // Pad clicks by pressure: the firmware click bit is unreliable (FINDINGS 10.1)
+        c.leftTrackpadClickMode = "PRESSURE";
+        c.leftTrackpadClickPressure = 0.125f;
+        c.rightTrackpadClickMode = "PRESSURE";    // group 21: Soft_Press, activation_threshold default 4096
+        c.rightTrackpadClickPressure = 0.125f;    // 4096 / 32768
         c.nativeTrackpadCamera = true;            // absolute_mouse
         c.trackpadSensitivity = 1.2f;             // sensitivity 120
         c.enableGyroAiming = true;                // group 33 gyro_to_mouse

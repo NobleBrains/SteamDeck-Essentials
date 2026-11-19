@@ -20,6 +20,18 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.4.1
+
+Standardwerte und Verhalten nach den Steam-Input-Fakten aus [`docs/FINDINGS.md`](docs/FINDINGS.md):
+* **Klick über Druck als Standard, 12,5 %** (Steam-Vorgabe für `Soft_Press`, 4096/32768, liegt am Klickpunkt der Firmware). Grund: Das Klick-Bit der Firmware verpasst ca. die Hälfte der Drücke, wenn der Daumen auf dem Pad liegt. Bestehende Configs werden einmalig umgestellt (`configVersion` 2). Alte Standard-Schwellen von 45 % bzw. 30 % werden zu 12,5 %. Unterhalb von 20 % lässt sich die Schwelle in 0,5-%-Schritten einstellen.
+* **Haptik-Stärke wie Steam:** Gain-Byte = `dB − 12 + 3·Intensität`. Klick beim Drücken: Click, Intensität 3. Loslassen: Tick, 2, −3 dB. Tastenwechsel und Radial-Menü: Tick, 1, 0 dB. Hotbar: Tick, 2. Die Stufen pro Pad verschieben das weiter um ±6 dB.
+* **Stick-Deadzone „Auto“** wie Steam pro Controller: Steam Controller 2026 12,5 %, Steam Deck 25 %. Wer +/- drückt, schaltet auf einen manuellen Wert um.
+* **Bildschirmtastatur wie SteamOS:** Im Vollbild-Layout deckt jedes Pad 55 % der Breite ab (10 % Überlappung in der Mitte). Die Abbildung ist linear ohne Glättung und Rand (`oskTrackpadScale` 1–2 wie „TrackPadTypingInputScale“). Die Taste bleibt aktiv, solange der Punkt in ihr liegt. Der Zeiger verschwindet erst 100 ms nach dem Abheben.
+* **Akku des Controllers** (z. B. Steam Controller 2026 per Funk) im Pausemenü, oben links. Die Werte kommen von SDL (Report `0x43`).
+* Workshop-Preset: beide Pads klicken über Druck mit 12,5 %, Deadzone auf Auto.
+
+---
+
 ## 🚀 Version 1.4.0
 
 ### Trackpad-Filter nach dem Vorbild von Steamify / mc-deck-native-controls
