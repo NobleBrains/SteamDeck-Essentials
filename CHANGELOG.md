@@ -20,6 +20,18 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.2.0
+
+### Trackpads: Klickdruck & Haptik-Stärke (Steam-Input-Parität)
+* **Neuer Tab `🖐 Pads`** im Controller-Dashboard (die Tabs heißen jetzt `⚡ Eco` und `🖐 Pads`, damit sechs Tabs nebeneinander passen).
+* **Klick-Erkennung:** `Hardware-Klick` (Standard) oder `Druckschwelle`. Bei der Druckschwelle gilt das Pad als gedrückt, sobald der gemessene Druck den Schwellwert erreicht. Den Schwellwert stellst du pro Pad in 5-%-Schritten ein. Losgelassen wird erst unter 80 % der Schwelle, damit der Klick an der Grenze nicht flackert. Ein voller Hardware-Klick zählt immer.
+* **Live-Druckanzeige** pro Pad mit roter Markierung für die Schwelle. Der Balken wird grün, sobald ein Klick ausgelöst ist.
+* **Haptik-Stärke pro Pad:** Aus / Sehr schwach / Schwach / Normal / Stark / Sehr stark (±6 dB pro Stufe). Beim Verstellen gibt es sofort einen Probe-Impuls.
+* Am Controller: Auf Wert-Zeilen ändert D-Pad links/rechts den Wert direkt.
+* Config: `trackpadClickMode`, `left/rightTrackpadClickPressure`, `left/rightTrackpadHapticLevel`.
+
+---
+
 ## 🚀 Version 1.1.3
 
 * **Echte Trackpad-Haptik beim Steam Controller (2026):** Neue Klasse [`power/TritonTrackpadHaptics.java`](src/main/java/com/steamdeck/mc/power/TritonTrackpadHaptics.java). Sie steuert die Aktuatoren *in* den Trackpads direkt über den HID-Output-Report `0x82` `[0x82, Seite 0 = L / 1 = R, Befehl 1 = Tick / 2 = Klick, Gain dB]` (Protokoll laut SteamlessController, MIT). Geschrieben wird auf den hidraw-Knoten, den SDL meldet, als Fallback wird er per sysfs gesucht. Über SDL-Rumble erreicht man nur die Griffmotoren.

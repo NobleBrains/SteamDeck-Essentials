@@ -82,6 +82,11 @@ public final class TritonTrackpadHaptics {
         if (path == null) return false;
 
         int side = rightPad ? 1 : 0;
+        // Per-pad intensity (Steam Input "haptic intensity"): level 0 = off, 3 = normal, +-6 dB per step
+        com.steamdeck.mc.config.ModConfig cfg = com.steamdeck.mc.config.ModConfig.getInstance();
+        int level = rightPad ? cfg.rightTrackpadHapticLevel : cfg.leftTrackpadHapticLevel;
+        if (level <= 0) return true; // silenced on purpose: no rumble fallback either
+        gainDb += (level - 3) * 6;
         long now = System.nanoTime();
         synchronized (lastSendNanos) {
             if (command != COMMAND_CLICK && now - lastSendNanos[side] < MIN_GAP_NANOS) {

@@ -64,6 +64,14 @@ public class ModConfig {
     public float trackpadSensitivity = 1.0f; // Native trackpad camera: 1.0 = one full swipe across the pad turns ~90 degrees
     public boolean trackpadClickJump = true;
     public boolean enableHotbarHaptics = true; // Haptic rumble on trackpad per hotbar scroll
+    // Trackpad click detection (like Steam Input "click pressure"): "HARDWARE" = the pad's own click,
+    // "PRESSURE" = click as soon as the measured pressure reaches the threshold below (0..1, per pad)
+    public String trackpadClickMode = "HARDWARE";
+    public float leftTrackpadClickPressure = 0.45f;
+    public float rightTrackpadClickPressure = 0.45f;
+    // Trackpad haptic intensity per pad: 0 = off, 1 = very weak ... 3 = normal ... 5 = very strong
+    public int leftTrackpadHapticLevel = 3;
+    public int rightTrackpadHapticLevel = 3;
     public boolean enableTrackpadClickHaptics = true; // Click feel on trackpad press/release (native Valve controllers, no Steam Input)
     public boolean enableRightStickRadialMenu = true; // 3-page Radial Menu on Right Joystick
     public float rightStickCameraSpeed = 180.0f; // Degrees per second at full right-stick deflection (when the radial menu is off)
@@ -294,6 +302,11 @@ public class ModConfig {
         this.gyroSensitivityY = clamp(this.gyroSensitivityY, 0.0f, 10.0f);
         this.rightStickCameraSpeed = clamp(this.rightStickCameraSpeed, 10.0f, 1000.0f);
         this.trackpadSensitivity = clamp(this.trackpadSensitivity, 0.1f, 10.0f);
+        if (!"PRESSURE".equals(this.trackpadClickMode)) this.trackpadClickMode = "HARDWARE";
+        this.leftTrackpadClickPressure = clamp(this.leftTrackpadClickPressure, 0.05f, 1.0f);
+        this.rightTrackpadClickPressure = clamp(this.rightTrackpadClickPressure, 0.05f, 1.0f);
+        this.leftTrackpadHapticLevel = Math.max(0, Math.min(5, this.leftTrackpadHapticLevel));
+        this.rightTrackpadHapticLevel = Math.max(0, Math.min(5, this.rightTrackpadHapticLevel));
         if (this.performanceTrackIntervalSeconds < 1) this.performanceTrackIntervalSeconds = 1;
         if (this.unfocusedFpsCap < 1) this.unfocusedFpsCap = 5;
         if (this.batteryChunkThreads < 1) this.batteryChunkThreads = 1;

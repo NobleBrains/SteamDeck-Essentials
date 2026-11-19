@@ -480,11 +480,20 @@ public class SteamDeckInputManager {
         // 6. Sticks & Trackpad clicks
         processButton(DeckButton.L3, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_STICK), client, set);
         processButton(DeckButton.R3, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_STICK), client, set);
-        processButton(DeckButton.LEFT_TRACKPAD, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_TOUCHPAD), client, set);
+        updateTrackpadPressure();
+        boolean hardLeft = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_TOUCHPAD);
+        boolean hardRight = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2);
+        if (isPressureClickActive()) {
+            // Steam-Input-style click pressure: the configured force threshold counts as a click
+            // (a full hardware click always counts too)
+            hardLeft |= updatePressureClick(0, ModConfig.getInstance().leftTrackpadClickPressure);
+            hardRight |= updatePressureClick(1, ModConfig.getInstance().rightTrackpadClickPressure);
+        }
+        processButton(DeckButton.LEFT_TRACKPAD, hardLeft, client, set);
         // SDL 3.4 mapping for Steam Deck & Steam Controller 2026 (libsdl-org/SDL #15601, #15612):
         //   TOUCHPAD = left pad click, MISC2 = right pad click, MISC3 = left stick touch,
         //   MISC4 = right stick touch, MISC1 = QAM, MISC5/6 = grip sense (Steam Controller only)
-        processButton(DeckButton.RIGHT_TRACKPAD, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2), client, set);
+        processButton(DeckButton.RIGHT_TRACKPAD, hardRight, client, set);
 
         // 7. D-Pad
         processButton(DeckButton.DPAD_UP, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_DPAD_UP), client, set);
@@ -1028,6 +1037,10 @@ public class SteamDeckInputManager {
         }
     }
 
+    // Live pressure per pad (0..1, -1 = no finger) and pressure-click state with hysteresis
+    private final float[] padPressure = {-1.0f, -1.0f};
+    private final boolean[] padPressureClick = {false, false};
+
     private final TrackpadTracker cameraPad = new TrackpadTracker();
     private final TrackpadTracker cursorPad = new TrackpadTracker();
     private double cursorX = -1;
@@ -1170,6 +1183,59 @@ public class SteamDeckInputManager {
         client.setLastInputType(InputType.MOUSE);
     }
 
+    /** Pressure-based trackpad click only for native Valve pads (Steam Input handles it itself otherwise). */
+    public boolean isPressureClickActive() {
+        return "PRESSURE".equals(ModConfig.getInstance().trackpadClickMode)
+                && activeKind.isNativeValve() && activeGamepadHandle != 0;
+    }
+
+    /** Current pressure of the left (0) / right (1) pad in 0..1, or -1 without a finger / without data. */
+    public float getTrackpadPressure(int side) {
+        return padPressure[side];
+    }
+
+    public boolean isTrackpadPressureClicked(int side) {
+        return padPressureClick[side];
+    }
+
+    /** Reads the finger pressure of both pads from SDL (touchpad 0 = left, 1 = right). */
+    public void updateTrackpadPressure() {
+        if (activeGamepadHandle == 0 || !activeKind.isNativeValve()) {
+            padPressure[0] = padPressure[1] = -1.0f;
+            return;
+        }
+        int pads = SDLGamepad.SDL_GetNumGamepadTouchpads(activeGamepadHandle);
+        for (int side = 0; side < 2; side++) {
+            int index = pads >= 2 ? side : 0;
+            if (pads <= 0 || (pads < 2 && side == 0)) {
+                padPressure[side] = -1.0f;
+                continue;
+            }
+            touchDown.clear();
+            touchX.clear();
+            touchY.clear();
+            touchPressure.clear();
+            boolean ok = SDLGamepad.SDL_GetGamepadTouchpadFinger(activeGamepadHandle, index, 0,
+                    touchDown, touchX, touchY, touchPressure);
+            padPressure[side] = (ok && touchDown.get(0) != 0) ? Math.max(0.0f, Math.min(1.0f, touchPressure.get(0))) : -1.0f;
+        }
+    }
+
+    /** Hysteresis: press at the threshold, release below 80 % of it (no flicker around the edge). */
+    private boolean updatePressureClick(int side, float threshold) {
+        float p = padPressure[side];
+        boolean pressed = padPressureClick[side];
+        if (p < 0.0f) {
+            pressed = false;
+        } else if (pressed) {
+            pressed = p >= threshold * 0.8f;
+        } else {
+            pressed = p >= threshold;
+        }
+        padPressureClick[side] = pressed;
+        return pressed;
+    }
+
     /** Right stick in [-1, 1] from the gamepad or the raw joystick fallback (axes 2/3). */
     private float[] readRightStick() {
         short rawRx;
@@ -1196,6 +1262,7 @@ public class SteamDeckInputManager {
         if (client == null) return;
         if (activeGamepadHandle != 0) {
             SDLGamepad.SDL_UpdateGamepads();
+            updateTrackpadPressure();
             pollTrackpadCursor(client);
         }
         if (!VirtualKeyboard.getInstance().isOpen()) return;
