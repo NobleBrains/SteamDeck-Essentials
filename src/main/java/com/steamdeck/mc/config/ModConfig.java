@@ -66,7 +66,13 @@ public class ModConfig {
     public boolean enableHotbarHaptics = true; // Haptic rumble on trackpad per hotbar scroll
     // Trackpad click detection (like Steam Input "click pressure"): "HARDWARE" = the pad's own click,
     // "PRESSURE" = click as soon as the measured pressure reaches the threshold below (0..1, per pad)
-    public String trackpadClickMode = "HARDWARE";
+    public String trackpadClickMode = null; // legacy (1.2.0), migrated to the per-pad values below
+    public String leftTrackpadClickMode = "HARDWARE";
+    public String rightTrackpadClickMode = "HARDWARE";
+    // Left trackpad: "BUTTON" = one button (Trackpad L), "DPAD_MOVE" = click-D-Pad that walks (like Steam's D-Pad mode)
+    public String leftTrackpadMode = "BUTTON";
+    // Pushing forward (stick or pad D-Pad) also holds sprint (Steam layouts often bind "Ctrl + W" to north)
+    public boolean sprintOnForward = false;
     public float leftTrackpadClickPressure = 0.45f;
     public float rightTrackpadClickPressure = 0.45f;
     // Trackpad haptic intensity per pad: 0 = off, 1 = very weak ... 3 = normal ... 5 = very strong
@@ -100,7 +106,10 @@ public class ModConfig {
     public float gyroSensitivityY = 1.0f;
     public boolean invertGyroX = false;
     public boolean invertGyroY = false;
-    public boolean aimItemsOnly = true;
+    public boolean aimItemsOnly = true; // legacy, see gyroActivation
+    // When the gyro turns the camera: "AIM_ONLY" (drawing bow/crossbow/trident/spyglass), "ALWAYS",
+    // "TRACKPAD_TOUCH" (finger on either trackpad), "RIGHT_STICK_TOUCH" (capacitive right stick)
+    public String gyroActivation = "AIM_ONLY";
 
     // Handheld GUI & OSK settings
     public float oskScale = 1.0f;
@@ -302,7 +311,21 @@ public class ModConfig {
         this.gyroSensitivityY = clamp(this.gyroSensitivityY, 0.0f, 10.0f);
         this.rightStickCameraSpeed = clamp(this.rightStickCameraSpeed, 10.0f, 1000.0f);
         this.trackpadSensitivity = clamp(this.trackpadSensitivity, 0.1f, 10.0f);
-        if (!"PRESSURE".equals(this.trackpadClickMode)) this.trackpadClickMode = "HARDWARE";
+        if ("PRESSURE".equals(this.trackpadClickMode)) {
+            this.leftTrackpadClickMode = "PRESSURE";
+            this.rightTrackpadClickMode = "PRESSURE";
+        }
+        this.trackpadClickMode = null;
+        if (!"PRESSURE".equals(this.leftTrackpadClickMode)) this.leftTrackpadClickMode = "HARDWARE";
+        if (!"PRESSURE".equals(this.rightTrackpadClickMode)) this.rightTrackpadClickMode = "HARDWARE";
+        if (!"DPAD_MOVE".equals(this.leftTrackpadMode)) this.leftTrackpadMode = "BUTTON";
+        if (!java.util.Set.of("AIM_ONLY", "ALWAYS", "TRACKPAD_TOUCH", "RIGHT_STICK_TOUCH").contains(this.gyroActivation)) {
+            this.gyroActivation = "AIM_ONLY";
+        }
+        if (!this.aimItemsOnly && "AIM_ONLY".equals(this.gyroActivation)) {
+            this.gyroActivation = "ALWAYS";
+            this.aimItemsOnly = true;
+        }
         this.leftTrackpadClickPressure = clamp(this.leftTrackpadClickPressure, 0.05f, 1.0f);
         this.rightTrackpadClickPressure = clamp(this.rightTrackpadClickPressure, 0.05f, 1.0f);
         this.leftTrackpadHapticLevel = Math.max(0, Math.min(5, this.leftTrackpadHapticLevel));

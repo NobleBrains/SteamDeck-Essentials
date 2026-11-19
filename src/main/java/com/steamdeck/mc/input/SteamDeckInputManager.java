@@ -415,11 +415,33 @@ public class SteamDeckInputManager {
         LocalPlayer player = client.player;
         boolean hasScreen = (client.gui != null && client.gui.screen() != null);
 
+        // 0. Trackpad pressure, clicks (hardware or Steam-style click pressure) and left-pad D-Pad
+        ModConfig cfg = ModConfig.getInstance();
+        updateTrackpadPressure();
+        boolean hardLeft = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_TOUCHPAD);
+        boolean hardRight = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2);
+        // Steam-Input-style click pressure: the configured force threshold counts as a click (a full hardware click always counts)
+        if (isPressureClickActive(0)) hardLeft |= updatePressureClick(0, cfg.leftTrackpadClickPressure);
+        if (isPressureClickActive(1)) hardRight |= updatePressureClick(1, cfg.rightTrackpadClickPressure);
+        boolean leftPadDpad = "DPAD_MOVE".equals(cfg.leftTrackpadMode) && activeKind.isNativeValve();
+
         // 1. Left Stick -> discrete 8-way movement in-game, or menu/gamemode navigation in screens
         short rawLx = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_LEFTX);
         short rawLy = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_LEFTY);
         float leftX = rawLx < 0 ? (float) rawLx / 32768.0f : (float) rawLx / 32767.0f;
         float leftY = rawLy < 0 ? (float) rawLy / 32768.0f : (float) rawLy / 32767.0f;
+
+        // Left trackpad as click-D-Pad (Steam "D-Pad" mode, requires click): while clicked, the finger
+        // position is the movement direction. The stick wins if both are used.
+        if (leftPadDpad && hardLeft && Math.hypot(leftX, leftY) <= cfg.stickDeadzone) {
+            float px = (padX[0] - 0.5f) * 2.0f;
+            float py = (padY[0] - 0.5f) * 2.0f;
+            float mag = (float) Math.hypot(px, py);
+            if (padPressure[0] >= 0.0f && mag > 0.25f) {
+                leftX = px / mag;
+                leftY = py / mag;
+            }
+        }
 
         if (!hasScreen) {
             if (Math.hypot(leftX, leftY) > ModConfig.getInstance().stickDeadzone) {
@@ -480,16 +502,18 @@ public class SteamDeckInputManager {
         // 6. Sticks & Trackpad clicks
         processButton(DeckButton.L3, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_STICK), client, set);
         processButton(DeckButton.R3, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_STICK), client, set);
-        updateTrackpadPressure();
-        boolean hardLeft = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_TOUCHPAD);
-        boolean hardRight = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2);
-        if (isPressureClickActive()) {
-            // Steam-Input-style click pressure: the configured force threshold counts as a click
-            // (a full hardware click always counts too)
-            hardLeft |= updatePressureClick(0, ModConfig.getInstance().leftTrackpadClickPressure);
-            hardRight |= updatePressureClick(1, ModConfig.getInstance().rightTrackpadClickPressure);
+        if (leftPadDpad) {
+            // The pad is a D-Pad now: keep the click haptic, but don't fire the "Trackpad L" binding
+            if (hardLeft != leftPadDpadWasDown) {
+                com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerTrackpadClickHaptic(false, hardLeft);
+                if (hardLeft) markControllerActivity();
+            }
+            leftPadDpadWasDown = hardLeft;
+            processButton(DeckButton.LEFT_TRACKPAD, false, client, set);
+        } else {
+            leftPadDpadWasDown = false;
+            processButton(DeckButton.LEFT_TRACKPAD, hardLeft, client, set);
         }
-        processButton(DeckButton.LEFT_TRACKPAD, hardLeft, client, set);
         // SDL 3.4 mapping for Steam Deck & Steam Controller 2026 (libsdl-org/SDL #15601, #15612):
         //   TOUCHPAD = left pad click, MISC2 = right pad click, MISC3 = left stick touch,
         //   MISC4 = right stick touch, MISC1 = QAM, MISC5/6 = grip sense (Steam Controller only)
@@ -660,18 +684,75 @@ public class SteamDeckInputManager {
         }
 
         ActionBinding binding = ModConfig.getInstance().getBinding(set, button);
+        if (!hasScreen) menuShiftHeld = false;
         if (binding.getAction() == DeckAction.NONE) return;
 
+        long now = System.currentTimeMillis();
+        if (isDown && !wasDown) {
+            repeatState.put(button, new long[]{now, now});
+            if (binding.hasHaptic()) {
+                // Steam "haptic_intensity": short tick on the pad of the button's side
+                com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerPadHaptic(
+                        isRightSide(button), false, (short) 22000, 18);
+            }
+        } else if (isDown && binding.hasRepeat()) {
+            long[] st = repeatState.get(button);
+            if (st != null && now - st[0] >= binding.getRepeatDelayMs() && now - st[1] >= binding.getRepeatRateMs()) {
+                st[1] = now;
+                // Repeat = release + press of the same binding (keys get a real key-repeat event)
+                executeBinding(binding, false, true, client, hasScreen, true);
+                executeBinding(binding, true, false, client, hasScreen, true);
+                if (binding.hasHaptic()) {
+                    com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerPadHaptic(
+                            isRightSide(button), false, (short) 22000, 18);
+                }
+                return;
+            }
+        }
+        executeBinding(binding, isDown, wasDown, client, hasScreen, false);
+    }
+
+    private static boolean isRightSide(DeckButton b) {
+        return switch (b) {
+            case A, B, X, Y, RB, RT, R3, R4, R5, RIGHT_TRACKPAD, START, RIGHT_STICK_TOUCH -> true;
+            default -> false;
+        };
+    }
+
+    private void scrollOnce(Minecraft client, boolean hasScreen, int direction) {
+        if (hasScreen) {
+            Screen screen = client.gui.screen();
+            com.mojang.blaze3d.platform.Window win = client.getWindow();
+            if (screen == null || win == null) return;
+            double mx = client.mouseHandler.xpos() * win.getGuiScaledWidth() / (double) Math.max(1, win.getWidth());
+            double my = client.mouseHandler.ypos() * win.getGuiScaledHeight() / (double) Math.max(1, win.getHeight());
+            screen.mouseScrolled(mx, my, 0.0, direction);
+        } else {
+            // Like the mouse wheel in vanilla: wheel up = previous hotbar slot
+            stepHotbar(client, -direction);
+        }
+    }
+
+    /** Performs a binding (custom key or semantic action). {@code repeat} marks synthetic hold-repeats. */
+    private void executeBinding(ActionBinding binding, boolean isDown, boolean wasDown, Minecraft client,
+                                boolean hasScreen, boolean repeat) {
         if (binding.isCustomKey()) {
             int keyCode = binding.getCustomKeyCode();
             try {
                 com.mojang.blaze3d.platform.InputConstants.Key key = com.mojang.blaze3d.platform.InputConstants.Type.KEYBOARD.getOrCreate(keyCode);
-                KeyMapping.set(key, isDown);
+                if (!(repeat && !isDown)) {
+                    KeyMapping.set(key, isDown);
+                }
                 if (isDown && !wasDown) {
                     KeyMapping.click(key);
                 }
                 if (client.keyboardHandler != null && client.getWindow() != null && isDown != wasDown) {
-                    client.keyboardHandler.keyPress(client.getWindow().handle(), isDown ? 1 : 0, new net.minecraft.client.input.KeyEvent(keyCode, keyCode, 0));
+                    if (repeat && !isDown) {
+                        // a synthetic repeat sends one "repeat" key event (action 2) instead of release+press
+                    } else {
+                        client.keyboardHandler.keyPress(client.getWindow().handle(), repeat ? 2 : (isDown ? 1 : 0),
+                                new net.minecraft.client.input.KeyEvent(keyCode, keyCode, 0));
+                    }
                 }
             } catch (Throwable t) {
                 SteamDeckEssentials.LOGGER.warn("Failed to dispatch custom key event", t);
@@ -694,7 +775,19 @@ public class SteamDeckInputManager {
             case INVENTORY -> setKeybindState(client.options.keyInventory, isDown, wasDown);
             case SWAP_OFFHAND -> setKeybindState(client.options.keySwapOffhand, isDown, wasDown);
             case SPRINT -> setKeybindState(client.options.keySprint, isDown, wasDown);
-            case SNEAK -> setKeybindState(client.options.keyShift, isDown, wasDown);
+            case SNEAK -> {
+                if (hasScreen) {
+                    menuShiftHeld = isDown; // held Shift in inventories: clicks become shift-clicks
+                } else {
+                    setKeybindState(client.options.keyShift, isDown, wasDown);
+                }
+            }
+            case MOUSE_SCROLL_UP -> {
+                if (isDown && !wasDown) scrollOnce(client, hasScreen, 1);
+            }
+            case MOUSE_SCROLL_DOWN -> {
+                if (isDown && !wasDown) scrollOnce(client, hasScreen, -1);
+            }
             case SNEAK_TOGGLE -> {
                 if (isDown && !wasDown) {
                     sneakToggled = !sneakToggled;
@@ -757,7 +850,7 @@ public class SteamDeckInputManager {
                                 break;
                             }
                         }
-                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_LEFT, 0), isDown ? 1 : 0);
+                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_LEFT, menuShiftHeld ? InputConstants.MOD_SHIFT : 0), isDown ? 1 : 0);
                     }
                 } else {
                     setKeybindState(client.options.keyAttack, isDown, wasDown);
@@ -766,7 +859,7 @@ public class SteamDeckInputManager {
             case MOUSE_RIGHT_CLICK -> {
                 if (hasScreen && client.getWindow() != null) {
                     if (isDown != wasDown) {
-                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_RIGHT, 0), isDown ? 1 : 0);
+                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_RIGHT, menuShiftHeld ? InputConstants.MOD_SHIFT : 0), isDown ? 1 : 0);
                     }
                 } else {
                     setKeybindState(client.options.keyUse, isDown, wasDown);
@@ -775,7 +868,7 @@ public class SteamDeckInputManager {
             case MOUSE_MIDDLE_CLICK -> {
                 if (hasScreen && client.getWindow() != null) {
                     if (isDown != wasDown) {
-                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_MIDDLE, 0), isDown ? 1 : 0);
+                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_MIDDLE, menuShiftHeld ? InputConstants.MOD_SHIFT : 0), isDown ? 1 : 0);
                     }
                 } else {
                     setKeybindState(client.options.keyPickItem, isDown, wasDown);
@@ -1039,6 +1132,12 @@ public class SteamDeckInputManager {
 
     // Live pressure per pad (0..1, -1 = no finger) and pressure-click state with hysteresis
     private final float[] padPressure = {-1.0f, -1.0f};
+    private final float[] padX = {0.5f, 0.5f};
+    private final float[] padY = {0.5f, 0.5f};
+    private boolean leftPadDpadWasDown = false;
+    private boolean menuShiftHeld = false;
+    // Hold-to-repeat state per button (Steam "hold_repeats")
+    private final Map<DeckButton, long[]> repeatState = new EnumMap<>(DeckButton.class);
     private final boolean[] padPressureClick = {false, false};
 
     private final TrackpadTracker cameraPad = new TrackpadTracker();
@@ -1184,9 +1283,20 @@ public class SteamDeckInputManager {
     }
 
     /** Pressure-based trackpad click only for native Valve pads (Steam Input handles it itself otherwise). */
-    public boolean isPressureClickActive() {
-        return "PRESSURE".equals(ModConfig.getInstance().trackpadClickMode)
-                && activeKind.isNativeValve() && activeGamepadHandle != 0;
+    public boolean isPressureClickActive(int side) {
+        ModConfig c = ModConfig.getInstance();
+        String mode = side == 0 ? c.leftTrackpadClickMode : c.rightTrackpadClickMode;
+        return "PRESSURE".equals(mode) && activeKind.isNativeValve() && activeGamepadHandle != 0;
+    }
+
+    /** Finger on the pad (left 0 / right 1)? Used e.g. for "gyro while touching a trackpad". */
+    public boolean isTrackpadTouched(int side) {
+        return padPressure[side] >= 0.0f;
+    }
+
+    /** Current (last polled) state of a physical button. */
+    public boolean isButtonDown(DeckButton button) {
+        return prevButtonStates.getOrDefault(button, false);
     }
 
     /** Current pressure of the left (0) / right (1) pad in 0..1, or -1 without a finger / without data. */
@@ -1218,6 +1328,10 @@ public class SteamDeckInputManager {
             boolean ok = SDLGamepad.SDL_GetGamepadTouchpadFinger(activeGamepadHandle, index, 0,
                     touchDown, touchX, touchY, touchPressure);
             padPressure[side] = (ok && touchDown.get(0) != 0) ? Math.max(0.0f, Math.min(1.0f, touchPressure.get(0))) : -1.0f;
+            if (padPressure[side] >= 0.0f) {
+                padX[side] = touchX.get(0);
+                padY[side] = touchY.get(0);
+            }
         }
     }
 

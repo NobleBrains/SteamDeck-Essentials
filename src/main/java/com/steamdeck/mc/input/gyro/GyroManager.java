@@ -87,13 +87,33 @@ public class GyroManager {
         LocalPlayer player = client.player;
         if (player == null || !client.mouseHandler.isMouseGrabbed()) return;
 
-        // 3. Contextual trigger: only while drawing/using Bow, Crossbow, Trident or Spyglass
-        if (config.aimItemsOnly && !isContextuallyAiming(player)) return;
+        // 3. Activation like Steam Input's "gyro enable button"
+        if (!isGyroActive(config, player)) return;
 
         // 4. Sensitivity 1.0 = 1:1 real-world rotation (frame-rate independent)
         double yaw = chosen.yawDelta() * config.gyroSensitivityX * (config.invertGyroX ? -1.0 : 1.0);
         double pitch = chosen.pitchDelta() * config.gyroSensitivityY * (config.invertGyroY ? -1.0 : 1.0);
         player.turn(yaw * TURN_UNITS_PER_DEGREE, pitch * TURN_UNITS_PER_DEGREE);
+    }
+
+    /** Whether the gyro may turn the camera right now (see ModConfig.gyroActivation). */
+    public boolean isGyroActive(ModConfig config, LocalPlayer player) {
+        com.steamdeck.mc.input.SteamDeckInputManager input = com.steamdeck.mc.input.SteamDeckInputManager.getInstance();
+        return switch (config.gyroActivation) {
+            case "ALWAYS" -> true;
+            case "TRACKPAD_TOUCH" -> input.isTrackpadTouched(0) || input.isTrackpadTouched(1);
+            case "RIGHT_STICK_TOUCH" -> input.isButtonDown(com.steamdeck.mc.input.DeckButton.RIGHT_STICK_TOUCH);
+            default -> isContextuallyAiming(player);
+        };
+    }
+
+    public static String activationLabel(String activation) {
+        return switch (activation) {
+            case "ALWAYS" -> "Immer an";
+            case "TRACKPAD_TOUCH" -> "Trackpad berührt";
+            case "RIGHT_STICK_TOUCH" -> "R-Stick berührt";
+            default -> "Nur beim Zielen";
+        };
     }
 
     /**

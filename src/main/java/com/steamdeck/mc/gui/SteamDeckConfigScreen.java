@@ -35,6 +35,8 @@ public class SteamDeckConfigScreen extends Screen {
     // Bridge Key configuration state
     private DeckButton listeningForBridgeKey = null;
     private String layoutInstallStatus = null;
+    private long presetConfirmUntil = 0L;
+    private long presetAppliedTime = 0L;
     private long layoutInstallStatusTime = 0L;
 
     private static final DeckButton[] LEFT_COLUMN_BUTTONS = {
@@ -67,6 +69,7 @@ public class SteamDeckConfigScreen extends Screen {
     private static final DeckAction[] MOUSE_AND_SPECIAL_ACTIONS = {
             DeckAction.MOUSE_LEFT_CLICK, DeckAction.MOUSE_RIGHT_CLICK,
             DeckAction.MOUSE_MIDDLE_CLICK, DeckAction.MOUSE_QUICK_MOVE,
+            DeckAction.MOUSE_SCROLL_UP, DeckAction.MOUSE_SCROLL_DOWN,
             DeckAction.RADIAL_MENU_CYCLE, DeckAction.CLOSE_SCREEN,
             DeckAction.CUSTOM_KEY, DeckAction.NONE
     };
@@ -166,6 +169,19 @@ public class SteamDeckConfigScreen extends Screen {
         boolean resetHover = mouseX >= resetX && mouseX <= resetX + 110 && mouseY >= btnY && mouseY <= btnY + btnH;
         graphics.fill(resetX, btnY, resetX + 110, btnY + btnH, resetHover ? 0xFF442222 : 0xFF221111);
         graphics.centeredText(font, "Standard laden", resetX + 55, btnY + 6, resetHover ? 0xFFFF7777 : 0xFFCC5555);
+
+        // Preset Button (action set tabs only)
+        if (this.currentTab < 3) {
+            int presetW = Math.min(170, this.width - 2 * 120 - 20);
+            int presetX = (this.width - presetW) / 2;
+            boolean presetHover = mouseX >= presetX && mouseX <= presetX + presetW && mouseY >= btnY && mouseY <= btnY + btnH;
+            boolean confirming = System.currentTimeMillis() < this.presetConfirmUntil;
+            String presetLabel = System.currentTimeMillis() - this.presetAppliedTime < 3000L ? "✓ Layout übernommen"
+                    : (confirming ? "Nochmal: alles überschreiben?" : "📋 Workshop-Layout laden");
+            graphics.fill(presetX, btnY, presetX + presetW, btnY + btnH, presetHover ? 0xFF2A3D52 : (confirming ? 0xFF4A3A10 : 0xFF1E2632));
+            graphics.centeredText(font, font.plainSubstrByWidth(presetLabel, presetW - 4), presetX + presetW / 2, btnY + 6,
+                    confirming ? 0xFFFFCC55 : 0xFF88CCFF);
+        }
 
         // Done Button
         int doneX = this.width - btnW - 10;
@@ -289,41 +305,54 @@ public class SteamDeckConfigScreen extends Screen {
     // ---------------------------------------------------------------------------------------
     // Tab 5: Trackpads (click pressure, live meter, haptic intensity) - Steam Input parity
     // ---------------------------------------------------------------------------------------
-    private static final int TRACKPAD_ROWS = 8;
+    private static final int TRACKPAD_ROWS = 11;
+    private static final int PAD_STEP = 17;
+    private static final int PAD_ROW_H = 15;
     private static final String[] HAPTIC_LEVEL_NAMES = {"Aus", "Sehr schwach", "Schwach", "Normal", "Stark", "Sehr stark"};
 
     private int trackpadRowAt(double mouseX, double mouseY) {
         int x = (this.width - 340) / 2;
         if (mouseX < x || mouseX > x + 340 || mouseY < 46) return -1;
-        int row = (int) ((mouseY - 46) / 19);
-        double inRow = (mouseY - 46) - row * 19;
-        return (row < TRACKPAD_ROWS && inRow <= 16) ? row : -1;
+        int row = (int) ((mouseY - 46) / PAD_STEP);
+        double inRow = (mouseY - 46) - row * PAD_STEP;
+        return (row < TRACKPAD_ROWS && inRow <= PAD_ROW_H) ? row : -1;
+    }
+
+    private static float stepPressure(float value, int delta) {
+        return Math.max(0.05f, Math.min(1.0f, Math.round((value + delta * 0.05f) * 20f) / 20f));
+    }
+
+    private static String toggleClickMode(String mode) {
+        return "PRESSURE".equals(mode) ? "HARDWARE" : "PRESSURE";
     }
 
     /** Applies a click (delta = 0) or -/+ (delta = -1/+1) on a trackpad-tab row. */
     private boolean adjustTrackpadSetting(int row, int delta) {
         ModConfig c = ModConfig.getInstance();
         switch (row) {
-            case 0 -> c.trackpadClickMode = "PRESSURE".equals(c.trackpadClickMode) ? "HARDWARE" : "PRESSURE";
+            case 0 -> c.leftTrackpadClickMode = toggleClickMode(c.leftTrackpadClickMode);
             case 1 -> {
                 if (delta == 0) return false;
-                c.leftTrackpadClickPressure = Math.max(0.05f, Math.min(1.0f, Math.round((c.leftTrackpadClickPressure + delta * 0.05f) * 20f) / 20f));
+                c.leftTrackpadClickPressure = stepPressure(c.leftTrackpadClickPressure, delta);
             }
-            case 3 -> {
+            case 3 -> c.rightTrackpadClickMode = toggleClickMode(c.rightTrackpadClickMode);
+            case 4 -> {
                 if (delta == 0) return false;
-                c.rightTrackpadClickPressure = Math.max(0.05f, Math.min(1.0f, Math.round((c.rightTrackpadClickPressure + delta * 0.05f) * 20f) / 20f));
+                c.rightTrackpadClickPressure = stepPressure(c.rightTrackpadClickPressure, delta);
             }
-            case 5 -> {
+            case 6 -> {
                 if (delta == 0) return false;
                 c.leftTrackpadHapticLevel = Math.max(0, Math.min(5, c.leftTrackpadHapticLevel + delta));
                 com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerPadHaptic(false, true, (short) 38000, 30);
             }
-            case 6 -> {
+            case 7 -> {
                 if (delta == 0) return false;
                 c.rightTrackpadHapticLevel = Math.max(0, Math.min(5, c.rightTrackpadHapticLevel + delta));
                 com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerPadHaptic(true, true, (short) 38000, 30);
             }
-            case 7 -> c.enableTrackpadClickHaptics = !c.enableTrackpadClickHaptics;
+            case 8 -> c.enableTrackpadClickHaptics = !c.enableTrackpadClickHaptics;
+            case 9 -> c.leftTrackpadMode = "DPAD_MOVE".equals(c.leftTrackpadMode) ? "BUTTON" : "DPAD_MOVE";
+            case 10 -> c.sprintOnForward = !c.sprintOnForward;
             default -> {
                 return false;
             }
@@ -332,62 +361,69 @@ public class SteamDeckConfigScreen extends Screen {
         return true;
     }
 
+    private void renderPadValueRow(GuiGraphicsExtractor graphics, Font font, int x, int y, int rowW, String label,
+                                   int color, int mouseX, int mouseY) {
+        graphics.fill(x, y, x + rowW, y + PAD_ROW_H, 0xAA161B22);
+        graphics.text(font, label, x + 8, y + (PAD_ROW_H - 7) / 2, color);
+        renderSmallButton(graphics, font, x + rowW - 60, y + 1, 26, PAD_ROW_H - 2, "-", mouseX, mouseY);
+        renderSmallButton(graphics, font, x + rowW - 30, y + 1, 26, PAD_ROW_H - 2, "+", mouseX, mouseY);
+    }
+
+    private void renderPadModeRow(GuiGraphicsExtractor graphics, Font font, int x, int y, int rowW, int row,
+                                  String label, int mouseX, int mouseY) {
+        boolean hover = trackpadRowAt(mouseX, mouseY) == row;
+        graphics.fill(x, y, x + rowW, y + PAD_ROW_H, hover ? 0xFF2A3D52 : 0xFF1E3A4A);
+        graphics.text(font, label, x + 8, y + (PAD_ROW_H - 7) / 2, 0xFF00FFCC);
+    }
+
     private void renderTrackpadTab(GuiGraphicsExtractor graphics, Font font, int mouseX, int mouseY) {
         ModConfig c = ModConfig.getInstance();
         SteamDeckInputManager input = SteamDeckInputManager.getInstance();
         int x = (this.width - 340) / 2;
         int rowW = 340;
-        int rowH = 16;
         int y = 46;
-        boolean pressureMode = "PRESSURE".equals(c.trackpadClickMode);
 
-        // 0: click detection mode
-        boolean hover = trackpadRowAt(mouseX, mouseY) == 0;
-        graphics.fill(x, y, x + rowW, y + rowH, hover ? 0xFF2A3D52 : 0xFF1E3A4A);
-        graphics.text(font, "Klick-Erkennung: " + (pressureMode ? "Druckschwelle (wie Steam Input)" : "Hardware-Klick"),
-                x + 8, y + 4, 0xFF00FFCC);
-        y += rowH + 3;
-
-        // 1-4: per pad threshold + live meter
         for (int side = 0; side < 2; side++) {
+            String mode = side == 0 ? c.leftTrackpadClickMode : c.rightTrackpadClickMode;
+            boolean pressureMode = "PRESSURE".equals(mode);
             float threshold = side == 0 ? c.leftTrackpadClickPressure : c.rightTrackpadClickPressure;
-            graphics.fill(x, y, x + rowW, y + rowH, 0xAA161B22);
-            int labelCol = pressureMode ? -1 : 0xFF777777;
-            graphics.text(font, (side == 0 ? "Linkes" : "Rechtes") + " Pad – Klickdruck: " + Math.round(threshold * 100) + "%",
-                    x + 8, y + 4, labelCol);
-            renderSmallButton(graphics, font, x + rowW - 60, y + 1, 26, 14, "-", mouseX, mouseY);
-            renderSmallButton(graphics, font, x + rowW - 30, y + 1, 26, 14, "+", mouseX, mouseY);
-            y += rowH + 3;
+            String padName = side == 0 ? "Linkes Pad" : "Rechtes Pad";
 
-            renderPressureMeter(graphics, font, x, y, rowW, rowH, input.getTrackpadPressure(side), threshold,
+            renderPadModeRow(graphics, font, x, y, rowW, side * 3,
+                    padName + " – Klick: " + (pressureMode ? "Druckschwelle (Soft Press)" : "Hardware-Klick"), mouseX, mouseY);
+            y += PAD_STEP;
+            renderPadValueRow(graphics, font, x, y, rowW, padName + " – Klickdruck: " + Math.round(threshold * 100) + "%",
+                    pressureMode ? -1 : 0xFF777777, mouseX, mouseY);
+            y += PAD_STEP;
+            renderPressureMeter(graphics, font, x, y, rowW, PAD_ROW_H, input.getTrackpadPressure(side), threshold,
                     pressureMode && input.isTrackpadPressureClicked(side));
-            y += rowH + 3;
+            y += PAD_STEP;
         }
 
-        // 5-6: haptic intensity per pad
         for (int side = 0; side < 2; side++) {
             int level = side == 0 ? c.leftTrackpadHapticLevel : c.rightTrackpadHapticLevel;
-            graphics.fill(x, y, x + rowW, y + rowH, 0xAA161B22);
-            graphics.text(font, "Haptik " + (side == 0 ? "links" : "rechts") + ": " + HAPTIC_LEVEL_NAMES[level],
-                    x + 8, y + 4, -1);
-            renderSmallButton(graphics, font, x + rowW - 60, y + 1, 26, 14, "-", mouseX, mouseY);
-            renderSmallButton(graphics, font, x + rowW - 30, y + 1, 26, 14, "+", mouseX, mouseY);
-            y += rowH + 3;
+            renderPadValueRow(graphics, font, x, y, rowW, "Haptik " + (side == 0 ? "links" : "rechts") + ": " + HAPTIC_LEVEL_NAMES[level],
+                    -1, mouseX, mouseY);
+            y += PAD_STEP;
         }
 
-        // 7: click haptic toggle
-        renderToggleOption(graphics, font, x, y, rowW, rowH, "Klick-Haptik (Drücken & Loslassen)", c.enableTrackpadClickHaptics, mouseX, mouseY);
-        y += rowH + 3;
+        renderToggleOption(graphics, font, x, y, rowW, PAD_ROW_H, "Klick-Haptik (Drücken & Loslassen)", c.enableTrackpadClickHaptics, mouseX, mouseY);
+        y += PAD_STEP;
+        renderPadModeRow(graphics, font, x, y, rowW, 9, "Linkes Pad: "
+                + ("DPAD_MOVE".equals(c.leftTrackpadMode) ? "D-Pad zum Laufen (mit Klick)" : "Taste (Trackpad L)"), mouseX, mouseY);
+        y += PAD_STEP;
+        renderToggleOption(graphics, font, x, y, rowW, PAD_ROW_H, "Vorwärts = Sprinten (Stick & Pad)", c.sprintOnForward, mouseX, mouseY);
+        y += PAD_STEP;
 
         String info;
         if (!input.getActiveKind().isNativeValve()) {
-            info = "Nur für native Valve-Controller (ohne Steam Input) – Steam regelt das sonst selbst.";
+            info = "Nur für native Valve-Controller (ohne Steam Input).";
         } else if (!com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().isAvailable()) {
             info = "Pad-Haptik: Rumble-Fallback (kein Steam Controller 2026)";
         } else {
             info = "Finger aufs Pad legen und drücken: der Balken zeigt den Druck live.";
         }
-        graphics.centeredText(font, font.plainSubstrByWidth(info, rowW), x + rowW / 2, y + 2, 0xFF88CCFF);
+        graphics.centeredText(font, font.plainSubstrByWidth(info, rowW), x + rowW / 2, y + 1, 0xFF88CCFF);
     }
 
     private void renderPressureMeter(GuiGraphicsExtractor graphics, Font font, int x, int y, int w, int h,
@@ -416,7 +452,9 @@ public class SteamDeckConfigScreen extends Screen {
 
         renderToggleOption(graphics, font, x, y, rowW, rowH, "Rechter Stick Radial-Menü (R3 wechselt)", config.enableRightStickRadialMenu, mouseX, mouseY);
         y += rowH + 2;
-        renderToggleOption(graphics, font, x, y, rowW, rowH, "Contextual Gyro Zielen (beim Spannen)", config.enableGyroAiming, mouseX, mouseY);
+        renderToggleOption(graphics, font, x, y, rowW, rowH, "Gyro: " + (config.enableGyroAiming
+                ? com.steamdeck.mc.input.gyro.GyroManager.activationLabel(config.gyroActivation) + String.format(" (%.1fx)", config.gyroSensitivityX)
+                : "Aus"), config.enableGyroAiming, mouseX, mouseY);
         y += rowH + 2;
         renderToggleOption(graphics, font, x, y, rowW, rowH, "8-Wege Stick Anticheat-Mapping", config.enable8WayStickMapping, mouseX, mouseY);
         y += rowH + 2;
@@ -869,7 +907,10 @@ public class SteamDeckConfigScreen extends Screen {
                 VirtualKeyboard.playClickSound();
             } else if (this.currentTab == 5) {
                 ModConfig cfg = ModConfig.getInstance();
-                cfg.trackpadClickMode = "HARDWARE";
+                cfg.leftTrackpadClickMode = "HARDWARE";
+                cfg.rightTrackpadClickMode = "HARDWARE";
+                cfg.leftTrackpadMode = "BUTTON";
+                cfg.sprintOnForward = false;
                 cfg.leftTrackpadClickPressure = 0.45f;
                 cfg.rightTrackpadClickPressure = 0.45f;
                 cfg.leftTrackpadHapticLevel = 3;
@@ -894,6 +935,22 @@ public class SteamDeckConfigScreen extends Screen {
                 VirtualKeyboard.playClickSound();
             }
             return true;
+        }
+        if (this.currentTab < 3) {
+            int presetW = Math.min(170, this.width - 2 * 120 - 20);
+            int presetX = (this.width - presetW) / 2;
+            if (mouseX >= presetX && mouseX <= presetX + presetW && mouseY >= btnY && mouseY <= btnY + btnH) {
+                long now = System.currentTimeMillis();
+                if (now < this.presetConfirmUntil) {
+                    com.steamdeck.mc.input.ControllerPresets.applyWorkshopMinecraft(ModConfig.getInstance());
+                    this.presetConfirmUntil = 0L;
+                    this.presetAppliedTime = now;
+                } else {
+                    this.presetConfirmUntil = now + 3000L;
+                }
+                VirtualKeyboard.playClickSound();
+                return true;
+            }
         }
         int doneX = this.width - btnW - 10;
         if (mouseX >= doneX && mouseX <= doneX + btnW && mouseY >= btnY && mouseY <= btnY + btnH) {
@@ -1037,7 +1094,19 @@ public class SteamDeckConfigScreen extends Screen {
                 }
                 y += rowH + 2;
                 if (mouseY >= y && mouseY <= y + rowH) {
-                    config.enableGyroAiming = !config.enableGyroAiming;
+                    // Aus -> Nur beim Zielen -> Immer -> Trackpad berührt -> R-Stick berührt -> Aus
+                    String[] modes = {"AIM_ONLY", "ALWAYS", "TRACKPAD_TOUCH", "RIGHT_STICK_TOUCH"};
+                    if (!config.enableGyroAiming) {
+                        config.enableGyroAiming = true;
+                        config.gyroActivation = modes[0];
+                    } else {
+                        int idx = java.util.Arrays.asList(modes).indexOf(config.gyroActivation);
+                        if (idx >= modes.length - 1) {
+                            config.enableGyroAiming = false;
+                        } else {
+                            config.gyroActivation = modes[idx + 1];
+                        }
+                    }
                     config.save();
                     VirtualKeyboard.playClickSound();
                     return true;
@@ -1204,7 +1273,7 @@ public class SteamDeckConfigScreen extends Screen {
             targetY = startY + this.navRow * rowSlot + (rowSlot - 2) / 2;
         } else {
             int startY = 46;
-            int stepY = (this.currentTab == 3 || this.currentTab == 5) ? 19 : 18;
+            int stepY = this.currentTab == 3 ? 19 : (this.currentTab == 5 ? PAD_STEP : 18);
             targetX = this.width / 2;
             targetY = startY + this.navRow * stepY + 8;
         }

@@ -20,6 +20,21 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.3.0
+
+### Preset „SteamDeck Minecraft Controls“ (Workshop 3624927898), 1:1 aus Steam Input
+* [`input/ControllerPresets.java`](src/main/java/com/steamdeck/mc/input/ControllerPresets.java) überträgt [`docs/steamdeck minecraft controls_0.vdf`](docs/) Gruppe für Gruppe. Laden kannst du es über den Button **📋 Workshop-Layout laden** in den Tabs Spiel/Menüs/Zielen (mit Bestätigungsklick).
+* Dafür neu in der Mod (Steam-Input-Funktionen):
+  * **Activator-Settings pro Belegung:** Halten zum Wiederholen (`hold_repeats`, Verzögerung/Rate) und Haptik-Tick (`haptic_intensity`), gespeichert als `AKTION|repeat=200,50|haptic`.
+  * **Aktionen Mausrad hoch/runter:** In Menüs wird gescrollt, im Spiel wechselt der Hotbar-Slot wie mit dem Mausrad.
+  * **Linkes Trackpad als D-Pad zum Laufen** (`leftTrackpadMode: DPAD_MOVE`, mit Klick).
+  * **Vorwärts = Sprinten** (`sprintOnForward`, entspricht „Strg + W“ auf Nord).
+  * **Klick-Erkennung pro Pad** (`left/rightTrackpadClickMode`), z. B. rechts mit Soft Press und 30 %.
+  * **Gyro-Aktivierung** (`gyroActivation`): Nur beim Zielen / Immer / Trackpad berührt / R-Stick berührt. Im Bridge-Tab durchschaltbar.
+  * **Gehaltenes Schleichen in Menüs** macht aus Mausklicks Shift-Klicks.
+
+---
+
 ## 🚀 Version 1.2.0
 
 ### Trackpads: Klickdruck & Haptik-Stärke (Steam-Input-Parität)

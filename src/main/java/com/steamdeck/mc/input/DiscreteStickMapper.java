@@ -10,6 +10,7 @@ import net.minecraft.client.Options;
  */
 public class DiscreteStickMapper {
     private Direction8 currentDirection = Direction8.NONE;
+    private boolean sprintHeldByStick = false;
 
     /**
      * Updates movement keys based on raw stick input.
@@ -39,6 +40,13 @@ public class DiscreteStickMapper {
         options.keyDown.setDown(dir.backward);
         options.keyLeft.setDown(dir.left);
         options.keyRight.setDown(dir.right);
+
+        // "Ctrl + W" on north, like many Steam layouts: forward also holds sprint
+        boolean wantSprint = dir.forward && ModConfig.getInstance().sprintOnForward;
+        if (wantSprint != sprintHeldByStick) {
+            options.keySprint.setDown(wantSprint);
+            sprintHeldByStick = wantSprint;
+        }
     }
 
     public void resetKeys(Options options) {
@@ -49,6 +57,10 @@ public class DiscreteStickMapper {
                 options.keyDown.setDown(false);
                 options.keyLeft.setDown(false);
                 options.keyRight.setDown(false);
+                if (sprintHeldByStick) {
+                    options.keySprint.setDown(false);
+                    sprintHeldByStick = false;
+                }
             }
         }
     }

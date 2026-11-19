@@ -31,6 +31,8 @@ public enum DeckAction {
     MOUSE_RIGHT_CLICK("Mausklick Rechts", "Rechtsklick (Menü / Spiel)"),
     MOUSE_MIDDLE_CLICK("Mausklick Mitte", "Mittelklick (Menü / Spiel)"),
     MOUSE_QUICK_MOVE("Schnell-Transfer", "Shift+Klick in Kisten"),
+    MOUSE_SCROLL_UP("Mausrad hoch", "Scrollen / Hotbar zurück"),
+    MOUSE_SCROLL_DOWN("Mausrad runter", "Scrollen / Hotbar vor"),
     CLOSE_SCREEN("Menü schließen", "Zurück / Schließen"),
 
     // Custom Keyboard Key
