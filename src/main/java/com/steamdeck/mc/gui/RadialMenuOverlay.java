@@ -87,7 +87,7 @@ public class RadialMenuOverlay {
         currentPage = (currentPage + 1) % PAGE_COUNT;
         lastPageSwitchToastTime = System.currentTimeMillis();
         VirtualKeyboard.playClickSound();
-        HapticFeedbackManager.getInstance().triggerHaptic(false, true, (short) 44000, 45);
+        HapticFeedbackManager.getInstance().triggerPadHaptic(true, true, (short) 44000, 45);
 
         if (open) {
             switchedWhileOpen = true;
@@ -158,7 +158,7 @@ public class RadialMenuOverlay {
     private void setHoveredSlice(Minecraft client, int newSlice) {
         if (newSlice != this.hoveredSlice) {
             this.hoveredSlice = newSlice;
-            HapticFeedbackManager.getInstance().triggerHaptic(false, true, (short) 26000, 22);
+            HapticFeedbackManager.getInstance().triggerPadHaptic(true, false, (short) 26000, 22);
 
             // For Hotbar 1-9, immediately switch the hotbar slot on hover for zero-latency preview
             if (currentPage == PAGE_HOTBAR && newSlice >= 0 && newSlice < 9 && client.player != null) {
@@ -188,13 +188,13 @@ public class RadialMenuOverlay {
         if (page == PAGE_HOTBAR) {
             if (slice >= 0 && slice < 9) {
                 client.player.getInventory().setSelectedSlot(slice);
-                HapticFeedbackManager.getInstance().triggerHaptic(false, true, (short) 34000, 30);
+                HapticFeedbackManager.getInstance().triggerPadHaptic(true, true, (short) 34000, 30);
             }
             return;
         }
 
         VirtualKeyboard.playClickSound();
-        HapticFeedbackManager.getInstance().triggerHaptic(false, true, (short) 38000, 35);
+        HapticFeedbackManager.getInstance().triggerPadHaptic(true, true, (short) 38000, 35);
 
         if (page == PAGE_F_KEYS) {
             switch (slice) {

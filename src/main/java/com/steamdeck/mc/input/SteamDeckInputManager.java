@@ -165,6 +165,7 @@ public class SteamDeckInputManager {
                 activeGamepadId = -1;
                 activeKind = ControllerKind.NONE;
                 lastDeviceCheckTime = 0;
+                com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().clearDevice();
             } else {
                 SteamDeckEssentials.LOGGER.info("[INPUT] SDL Gamepad disconnected: ID {}", activeGamepadId);
                 SDLGamepad.SDL_CloseGamepad(activeGamepadHandle);
@@ -172,6 +173,7 @@ public class SteamDeckInputManager {
                 activeGamepadId = -1;
                 activeDeviceName = "None";
                 activeKind = ControllerKind.NONE;
+                com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().clearDevice();
             }
         }
 
@@ -204,6 +206,14 @@ public class SteamDeckInputManager {
                 activeKind = bestKind;
                 activeDeviceName = String.valueOf(SDLGamepad.SDL_GetGamepadName(handle));
                 logControllerDiagnostics(handle, best[0], bestKind);
+                if (bestKind == ControllerKind.STEAM_CONTROLLER_2026) {
+                    com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().setDevice(
+                            SDLGamepad.SDL_GetGamepadPath(handle),
+                            SDLGamepad.SDL_GetGamepadVendor(handle) & 0xFFFF,
+                            SDLGamepad.SDL_GetGamepadProduct(handle) & 0xFFFF);
+                } else {
+                    com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().clearDevice();
+                }
                 return;
             }
         }

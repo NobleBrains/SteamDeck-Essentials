@@ -20,6 +20,14 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.1.3
+
+* **Echte Trackpad-Haptik beim Steam Controller (2026):** Neue Klasse [`power/TritonTrackpadHaptics.java`](src/main/java/com/steamdeck/mc/power/TritonTrackpadHaptics.java). Sie steuert die Aktuatoren *in* den Trackpads direkt über den HID-Output-Report `0x82` `[0x82, Seite 0 = L / 1 = R, Befehl 1 = Tick / 2 = Klick, Gain dB]` (Protokoll laut SteamlessController, MIT). Geschrieben wird auf den hidraw-Knoten, den SDL meldet, als Fallback wird er per sysfs gesucht. Über SDL-Rumble erreicht man nur die Griffmotoren.
+* Pad-Klick beim Drücken, leiser Tick beim Loslassen. Hotbar-Wechsel, Menü-Navigation und Radial-Menü nutzen jetzt ebenfalls die Pad-Aktuatoren. Bogen-Spannung und Haltbarkeitswarnung bleiben auf den Griffmotoren.
+* Bei anderen Controllern bleibt es beim bisherigen Rumble.
+
+---
+
 ## 🚀 Version 1.1.2
 
 * **Trackpad-Klick-Haptik:** Ein kurzer, kräftiger Impuls beim Drücken und ein leichterer beim Loslassen, jeweils auf der Seite des gedrückten Pads. Das gilt nur für native Valve-Controller, denn mit Steam Input erzeugt Steam diese Haptik selbst. Abschaltbar über `enableTrackpadClickHaptics`.

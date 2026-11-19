@@ -25,6 +25,8 @@ public class HapticFeedbackManager {
      */
     public void triggerHotbarHaptic(int direction) {
         if (!ModConfig.getInstance().enableHotbarHaptics) return;
+        // Steam Controller 2026: real trackpad actuator tick instead of the grip motors
+        if (TritonTrackpadHaptics.getInstance().pulse(direction > 0, TritonTrackpadHaptics.COMMAND_TICK, 0)) return;
         triggerHaptic(direction < 0, direction > 0, (short) 38000, 35);
     }
 
@@ -35,9 +37,27 @@ public class HapticFeedbackManager {
     public void triggerTrackpadClickHaptic(boolean rightPad, boolean pressed) {
         if (!ModConfig.getInstance().enableTrackpadClickHaptics) return;
         if (!SteamDeckInputManager.getInstance().getActiveKind().isNativeValve()) return;
+        // Steam Controller 2026: the actuator inside the pressed trackpad (click on press, soft tick on release)
+        if (TritonTrackpadHaptics.getInstance().pulse(rightPad,
+                pressed ? TritonTrackpadHaptics.COMMAND_CLICK : TritonTrackpadHaptics.COMMAND_TICK,
+                pressed ? 0 : -6)) {
+            return;
+        }
         short intensity = pressed ? (short) 40000 : (short) 22000;
         int durationMs = pressed ? 22 : 14;
         triggerHaptic(!rightPad, rightPad, intensity, durationMs);
+    }
+
+    /**
+     * Haptic meant for a trackpad (UI ticks/clicks). Uses the real pad actuator on the Steam
+     * Controller 2026 and falls back to the rumble motor of that side otherwise.
+     */
+    public void triggerPadHaptic(boolean rightPad, boolean strong, short fallbackIntensity, int fallbackMs) {
+        if (TritonTrackpadHaptics.getInstance().pulse(rightPad,
+                strong ? TritonTrackpadHaptics.COMMAND_CLICK : TritonTrackpadHaptics.COMMAND_TICK, 0)) {
+            return;
+        }
+        triggerHaptic(!rightPad, rightPad, fallbackIntensity, fallbackMs);
     }
 
     /**
