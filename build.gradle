@@ -1,3 +1,5 @@
+import groovy.json.JsonSlurper
+
 plugins {
     id 'java'
 }
@@ -11,12 +13,70 @@ java {
     }
 }
 
-def prismLibraries = file('/var/home/lukhicken/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher/libraries')
+// ---------------------------------------------------------------------------
+// Compile classpath from the local Prism Launcher installation.
+//
+// The library folder holds jars for EVERY installed Minecraft/LWJGL version
+// (1.21.11, 26.2, 26.4 snapshots, LWJGL 3.3.3/3.4.1/3.4.3, ...). Putting all of
+// them on the classpath made it order-dependent which Minecraft classes the
+// mod was compiled against. Instead we read Prism's version metadata and only
+// add exactly the libraries that the target Minecraft version uses.
+//
+// Override the Prism data folder with -PprismDir=/path or PRISM_DIR=/path.
+// ---------------------------------------------------------------------------
+def prismDir = file(project.findProperty('prismDir')
+        ?: System.getenv('PRISM_DIR')
+        ?: "${System.getProperty('user.home')}/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher")
+def prismLibraries = new File(prismDir, 'libraries')
+def prismMeta = new File(prismDir, 'meta')
+def mcVersion = project.property('minecraft_version')
+
+def mavenPath = { String coords ->
+    // group:artifact:version[:classifier]
+    def p = coords.split(':')
+    def classifier = p.length > 3 ? "-${p[3]}" : ''
+    return new File(prismLibraries, "${p[0].replace('.', '/')}/${p[1]}/${p[2]}/${p[1]}-${p[2]}${classifier}.jar")
+}
+
+def readMeta = { String uid, String ver ->
+    def f = new File(prismMeta, "${uid}/${ver}.json")
+    if (!f.exists()) throw new GradleException("Prism metadata not found: ${f} (start the ${mcVersion} instance once in Prism)")
+    return new JsonSlurper().parse(f)
+}
+
+def compileJars = []
+def mcMeta = readMeta('net.minecraft', mcVersion)
+compileJars << mavenPath(mcMeta.mainJar.name)
+mcMeta.libraries.each { compileJars << mavenPath(it.name) }
+
+def lwjglVersion = mcMeta.requires.find { it.uid == 'org.lwjgl3' }?.suggests
+readMeta('org.lwjgl3', lwjglVersion).libraries
+        .findAll { !it.name.contains('-natives-') }
+        .each { compileJars << mavenPath(it.name) }
+
+def loaderVersion = project.property('fabric_loader_version')
+def loaderMeta = readMeta('net.fabricmc.fabric-loader', loaderVersion)
+loaderMeta.libraries.each { compileJars << mavenPath(it.name) }
+
+compileJars = compileJars.findAll { it.exists() }.unique()
+
+sourceSets {
+    // Compile-only API stubs (e.g. ModMenu). Never packaged into the mod jar,
+    // otherwise they would shadow the real ModMenu classes at runtime.
+    stubs {
+        java.srcDir 'src/stubs/java'
+    }
+}
 
 dependencies {
-    compileOnly files("$prismLibraries/com/mojang/minecraft/26.3/minecraft-26.3-client.jar")
-    compileOnly fileTree(dir: prismLibraries, include: '**/*.jar')
+    stubsCompileOnly files(compileJars)
+    compileOnly files(compileJars)
     compileOnly fileTree(dir: 'libs/fabric-api', include: '*.jar')
+    compileOnly sourceSets.stubs.output
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
 }
 
 tasks.named('jar') {
