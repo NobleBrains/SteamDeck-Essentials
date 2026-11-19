@@ -59,6 +59,11 @@ public class VirtualKeyboard {
     private float rightCursorY = -1;
     private boolean dualCursorActive = false;
 
+    // Absolute trackpad typing (SteamOS style): each pad covers its half of the keyboard
+    private final boolean[] padTouching = {false, false};
+    private final Key[] padHoverKey = {null, null};
+    private static final float KEY_HYSTERESIS = 2.0f; // gui px a finger must leave a key before switching
+
     public static VirtualKeyboard getInstance() {
         return INSTANCE;
     }
@@ -248,6 +253,10 @@ public class VirtualKeyboard {
 
     public void setOpen(boolean open) {
         this.open = open;
+        if (!open) {
+            padTouching[0] = padTouching[1] = false;
+            padHoverKey[0] = padHoverKey[1] = null;
+        }
     }
 
     public void toggle() {
@@ -395,8 +404,8 @@ public class VirtualKeyboard {
     }
 
     private void renderKey(GuiGraphicsExtractor graphics, Font font, Key key, int mouseX, int mouseY) {
-        boolean isLeftHover = this.splitMode && this.dualCursorActive && key.contains(this.leftCursorX, this.leftCursorY);
-        boolean isRightHover = this.splitMode && this.dualCursorActive && key.contains(this.rightCursorX, this.rightCursorY);
+        boolean isLeftHover = this.dualCursorActive && (padTouching[0] ? key == padHoverKey[0] : (this.splitMode && key.contains(this.leftCursorX, this.leftCursorY)));
+        boolean isRightHover = this.dualCursorActive && (padTouching[1] ? key == padHoverKey[1] : (this.splitMode && key.contains(this.rightCursorX, this.rightCursorY)));
         boolean hovered = key.contains((double) mouseX, (double) mouseY) || isLeftHover || isRightHover;
         boolean active = (key.type == KeyType.SHIFT && this.shifted)
                 || (key.type == KeyType.CAPS && this.capsLock)
@@ -510,6 +519,9 @@ public class VirtualKeyboard {
                         this.renderKey(graphics, font, key, mouseX, mouseY);
                     }
                 }
+                // Full layout: pads still cover the left / right half of the keyboard
+                if (padTouching[0]) renderReticle(graphics, this.leftCursorX, this.leftCursorY, 0xFF00FFCC, 0x8800E5FF);
+                if (padTouching[1]) renderReticle(graphics, this.rightCursorX, this.rightCursorY, 0xFFFFB300, 0x88FFAA00);
             }
         }
     }
@@ -542,9 +554,82 @@ public class VirtualKeyboard {
         }
     }
 
+    /**
+     * Absolute trackpad position (0..1 on the pad) for the left ({@code right = false}) or right pad.
+     * The pad covers its half of the keyboard (split: its own panel; full layout: left/right half),
+     * inset slightly so the outer keys are easy to reach at the pad's edge.
+     * Pass {@code touching = false} when the finger lifts.
+     */
+    public void setPadCursor(boolean right, float nx, float ny, boolean touching) {
+        int side = right ? 1 : 0;
+        if (!this.open || !touching) {
+            padTouching[side] = false;
+            padHoverKey[side] = null;
+            return;
+        }
+        float areaX, areaW;
+        if (this.splitMode) {
+            areaX = right ? this.rightX : this.leftX;
+            areaW = right ? this.rightWidth : this.leftWidth;
+        } else {
+            areaW = this.fullWidth / 2.0f;
+            areaX = right ? this.fullX + areaW : this.fullX;
+        }
+        // 8 % margin on the pad: the very edge of a round pad is hard to hit precisely
+        float u = Math.max(0.0f, Math.min(1.0f, (nx - 0.08f) / 0.84f));
+        float v = Math.max(0.0f, Math.min(1.0f, (ny - 0.08f) / 0.84f));
+        float px = areaX + 3 + u * (areaW - 6);
+        float py = this.kbY + 3 + v * (this.kbHeight - 6);
+        if (right) {
+            this.rightCursorX = px;
+            this.rightCursorY = py;
+        } else {
+            this.leftCursorX = px;
+            this.leftCursorY = py;
+        }
+        this.dualCursorActive = true;
+        padTouching[side] = true;
+
+        // Key under the finger with hysteresis, haptic tick when it changes (like SteamOS)
+        Key current = padHoverKey[side];
+        boolean keep = current != null && px >= current.x - KEY_HYSTERESIS && px < current.x + current.width + KEY_HYSTERESIS
+                && py >= current.y - KEY_HYSTERESIS && py < current.y + current.height + KEY_HYSTERESIS;
+        if (!keep) {
+            Key next = this.splitMode ? getKeyAt(px, py, !right) : getKeyAt(px, py, true);
+            if (next == null) next = nearestKey(px, py, right);
+            if (next != current && next != null && current != null) {
+                com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerPadHaptic(right, false, (short) 16000, 12);
+            }
+            padHoverKey[side] = next;
+        }
+    }
+
+    public boolean isPadTouching(boolean right) {
+        return padTouching[right ? 1 : 0];
+    }
+
+    /** Closest key to a point in the pad's area (for the gaps between keys). */
+    private Key nearestKey(float x, float y, boolean right) {
+        List<List<Key>> rows = this.splitMode ? (right ? this.rightRows : this.leftRows) : this.fullRows;
+        Key best = null;
+        double bestD = Double.MAX_VALUE;
+        for (List<Key> row : rows) {
+            for (Key key : row) {
+                double cx = Math.max(key.x, Math.min(key.x + key.width, x));
+                double cy = Math.max(key.y, Math.min(key.y + key.height, y));
+                double d = (cx - x) * (cx - x) + (cy - y) * (cy - y);
+                if (d < bestD) {
+                    bestD = d;
+                    best = key;
+                }
+            }
+        }
+        return best;
+    }
+
     public boolean triggerLeftCursorClick(Screen screen) {
         if (!this.open) return false;
-        Key key = getKeyAt(this.leftCursorX, this.leftCursorY, true);
+        Key key = padTouching[0] && padHoverKey[0] != null ? padHoverKey[0] : getKeyAt(this.leftCursorX, this.leftCursorY, true);
         if (key != null) {
             this.handleKeyTap(key, screen, 0);
             playClickSound();
@@ -556,7 +641,8 @@ public class VirtualKeyboard {
 
     public boolean triggerRightCursorClick(Screen screen) {
         if (!this.open) return false;
-        Key key = getKeyAt(this.rightCursorX, this.rightCursorY, false);
+        Key key = padTouching[1] && padHoverKey[1] != null ? padHoverKey[1]
+                : getKeyAt(this.rightCursorX, this.rightCursorY, !this.splitMode);
         if (key != null) {
             this.handleKeyTap(key, screen, 0);
             playClickSound();

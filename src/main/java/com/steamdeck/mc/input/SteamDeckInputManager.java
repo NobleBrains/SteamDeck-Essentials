@@ -433,7 +433,7 @@ public class SteamDeckInputManager {
         // Steam-Input-style click pressure: the configured force threshold counts as a click (a full hardware click always counts)
         if (isPressureClickActive(0)) hardLeft |= updatePressureClick(0, cfg.leftTrackpadClickPressure);
         if (isPressureClickActive(1)) hardRight |= updatePressureClick(1, cfg.rightTrackpadClickPressure);
-        boolean leftPadDpad = "DPAD_MOVE".equals(cfg.leftTrackpadMode) && activeKind.isNativeValve();
+        boolean leftPadDpad = "DPAD_MOVE".equals(cfg.leftTrackpadMode) && activeKind.isNativeValve() && !hasScreen;
 
         // 1. Left Stick -> discrete 8-way movement in-game, or menu/gamemode navigation in screens
         short rawLx = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_LEFTX);
@@ -1133,22 +1133,49 @@ public class SteamDeckInputManager {
 
     /** Finger tracking state of the right trackpad. Separate instances for camera and menu cursor,
      *  because the HUD (camera) keeps rendering underneath open screens. */
+    /**
+     * Relative finger tracking for one trackpad (camera / mouse cursor).
+     *
+     * <p>Noise handling follows what Steamify and mc-deck-native-controls do (both based on
+     * Jibb Smart's gyro filtering, gyrowiki.jibbsmart.com), applied to the finger velocity in
+     * pad widths per second:</p>
+     * <ol>
+     *     <li><b>Settle:</b> the first 40 ms after the finger lands are ignored (the contact point
+     *     jumps while the fingertip flattens).</li>
+     *     <li><b>Soft tiered smoothing:</b> above {@code HI} the motion is passed through directly
+     *     (no lag on fast swipes), below {@code LO} it is fully smoothed with a time-based
+     *     exponential filter ({@code TAU}), in between it is blended.</li>
+     *     <li><b>Tightening:</b> below {@code TIGHT} the output shrinks proportionally to the speed,
+     *     a soft deadzone that removes the jitter of a resting finger without a hard edge.</li>
+     *     <li><b>Click freeze:</b> pressing deforms the fingertip and drags the point, so motion is
+     *     frozen for 60 ms when a click starts (cursor stays on the target being clicked).</li>
+     * </ol>
+     */
     private static final class TrackpadTracker {
+        static final long SETTLE_NANOS = 40_000_000L;
+        static final long CLICK_FREEZE_NANOS = 60_000_000L;
+        static final double TIGHT = 0.05;
+        static final double LO = 0.15;
+        static final double HI = 0.6;
+        static final double TAU = 0.05;
+
         boolean wasDown = false;
-        float lastX;       // filtered position of the previous call
+        float lastX;
         float lastY;
-        float filtX;       // low-pass filtered finger position
-        float filtY;
+        long landNanos;
         long lastNanos;
-        float lastDt;      // seconds since the previous delta (for acceleration)
+        float lastDt = 0.016f;
+        double smoothX;
+        double smoothY;
+        boolean wasClicked = false;
+        long freezeUntil = 0L;
 
         void reset() {
             wasDown = false;
+            smoothX = smoothY = 0.0;
+            wasClicked = false;
         }
     }
-
-    /** Movement below this (pad widths per update) is sensor noise of a resting finger. */
-    private static final float TRACKPAD_JITTER = 0.0025f;
 
     // Live pressure per pad (0..1, -1 = no finger) and pressure-click state with hysteresis
     private final float[] padPressure = {-1.0f, -1.0f};
@@ -1260,29 +1287,57 @@ public class SteamDeckInputManager {
         float y = touchY.get(0);
         long now = System.nanoTime();
         if (!tracker.wasDown) {
-            tracker.filtX = tracker.lastX = x;
-            tracker.filtY = tracker.lastY = y;
-            tracker.lastNanos = now;
             tracker.wasDown = true;
+            tracker.lastX = x;
+            tracker.lastY = y;
+            tracker.landNanos = tracker.lastNanos = now;
+            tracker.smoothX = tracker.smoothY = 0.0;
             return null;
         }
 
-        // Adaptive low-pass (like Steam's smoothing): heavy filtering for tiny, slow motion
-        // (kills the jitter of a resting finger), almost none for fast swipes (no lag).
-        float rawDist = (float) Math.hypot(x - tracker.filtX, y - tracker.filtY);
-        float alpha = Math.min(1.0f, 0.25f + rawDist * 40.0f);
-        tracker.filtX += (x - tracker.filtX) * alpha;
-        tracker.filtY += (y - tracker.filtY) * alpha;
-
-        float dx = tracker.filtX - tracker.lastX;
-        float dy = tracker.filtY - tracker.lastY;
-        if (Math.hypot(dx, dy) < TRACKPAD_JITTER) {
-            return null; // keep lastX/Y, so slow deliberate motion still accumulates past the threshold
+        // Click freeze: detect the start of a press (hardware click or Steam-style click pressure)
+        boolean clicked = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2)
+                || (isPressureClickActive(1) && touchPressure.get(0) >= ModConfig.getInstance().rightTrackpadClickPressure);
+        if (clicked && !tracker.wasClicked) {
+            tracker.freezeUntil = now + TrackpadTracker.CLICK_FREEZE_NANOS;
         }
-        tracker.lastDt = Math.max(0.001f, Math.min(0.1f, (now - tracker.lastNanos) / 1_000_000_000.0f));
+        tracker.wasClicked = clicked;
+
+        if (now - tracker.landNanos < TrackpadTracker.SETTLE_NANOS || now < tracker.freezeUntil) {
+            // keep following the finger silently so nothing jumps afterwards
+            tracker.lastX = x;
+            tracker.lastY = y;
+            tracker.lastNanos = now;
+            tracker.smoothX = tracker.smoothY = 0.0;
+            return null;
+        }
+
+        double dt = Math.max(0.001, Math.min(0.1, (now - tracker.lastNanos) / 1_000_000_000.0));
+        double vx = (x - tracker.lastX) / dt;
+        double vy = (y - tracker.lastY) / dt;
+        tracker.lastX = x;
+        tracker.lastY = y;
         tracker.lastNanos = now;
-        tracker.lastX = tracker.filtX;
-        tracker.lastY = tracker.filtY;
+        tracker.lastDt = (float) dt;
+
+        double speed = Math.hypot(vx, vy);
+        double direct = Math.max(0.0, Math.min(1.0, (speed - TrackpadTracker.LO) / (TrackpadTracker.HI - TrackpadTracker.LO)));
+        double k = 1.0 - Math.exp(-dt / TrackpadTracker.TAU);
+        tracker.smoothX += (vx * (1.0 - direct) - tracker.smoothX) * k;
+        tracker.smoothY += (vy * (1.0 - direct) - tracker.smoothY) * k;
+        double outX = vx * direct + tracker.smoothX;
+        double outY = vy * direct + tracker.smoothY;
+
+        double outSpeed = Math.hypot(outX, outY);
+        if (outSpeed < TrackpadTracker.TIGHT) {
+            double f = outSpeed / TrackpadTracker.TIGHT;
+            outX *= f;
+            outY *= f;
+        }
+
+        float dx = (float) (outX * dt);
+        float dy = (float) (outY * dt);
+        if (dx == 0.0f && dy == 0.0f) return null;
         return new float[]{dx, dy};
     }
 
@@ -1394,6 +1449,45 @@ public class SteamDeckInputManager {
         return pressed;
     }
 
+    // Smoothed absolute pad positions for the on-screen keyboard {x, y, landNanos}, null = no finger
+    private final double[][] oskPadSmooth = new double[2][];
+    private long oskLastNanos = 0L;
+
+    /**
+     * Absolute trackpad pointers for the on-screen keyboard. Light exponential smoothing (25 ms)
+     * keeps the reticle calm; the first 40 ms after landing are ignored like in the relative tracker.
+     * Typing happens through the pad click (hardware or click pressure) in processButton().
+     */
+    private void pollTrackpadKeyboard() {
+        long now = System.nanoTime();
+        double dt = oskLastNanos == 0L ? 0.016 : Math.max(0.001, Math.min(0.1, (now - oskLastNanos) / 1_000_000_000.0));
+        oskLastNanos = now;
+        double k = 1.0 - Math.exp(-dt / 0.025);
+        VirtualKeyboard osk = VirtualKeyboard.getInstance();
+
+        for (int side = 0; side < 2; side++) {
+            boolean touching = padPressure[side] >= 0.0f;
+            if (!touching) {
+                oskPadSmooth[side] = null;
+                osk.setPadCursor(side == 1, 0, 0, false);
+                continue;
+            }
+            double[] st = oskPadSmooth[side];
+            if (st == null) {
+                st = oskPadSmooth[side] = new double[]{padX[side], padY[side], now};
+            }
+            if (now - (long) st[2] < 40_000_000L) {
+                st[0] = padX[side];
+                st[1] = padY[side];
+                continue; // settling: wait before showing/selecting
+            }
+            st[0] += (padX[side] - st[0]) * k;
+            st[1] += (padY[side] - st[1]) * k;
+            markControllerActivity();
+            osk.setPadCursor(side == 1, (float) st[0], (float) st[1], true);
+        }
+    }
+
     /** Right stick in [-1, 1] from the gamepad or the raw joystick fallback (axes 2/3). */
     private float[] readRightStick() {
         short rawRx;
@@ -1421,7 +1515,14 @@ public class SteamDeckInputManager {
         if (activeGamepadHandle != 0) {
             SDLGamepad.SDL_UpdateGamepads();
             updateTrackpadPressure();
-            pollTrackpadCursor(client);
+            if (VirtualKeyboard.getInstance().isOpen() && activeKind.isNativeValve()) {
+                // SteamOS-style typing: both pads point at their half of the keyboard
+                cursorPad.reset();
+                pollTrackpadKeyboard();
+            } else {
+                oskPadSmooth[0] = oskPadSmooth[1] = null;
+                pollTrackpadCursor(client);
+            }
         }
         if (!VirtualKeyboard.getInstance().isOpen()) return;
 

@@ -20,6 +20,27 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.4.0
+
+### Trackpad-Filter nach dem Vorbild von Steamify / mc-deck-native-controls
+* Ausgewertet wurden **Steamify 1.3.0** (Fabric, MC 26.3), **mc-deck-native-controls** (Forge) und **SteamlessController**. Steamify und mc-deck-native-controls nutzen beide die Filter von Jibb Smart (gyrowiki). Die Mod setzt das jetzt auf der Finger-Geschwindigkeit um (Pad-Breiten/s):
+  * **Einschwingzeit:** Die ersten 40 ms nach dem Aufsetzen werden ignoriert.
+  * **Gestufte Glättung:** Über 0,6/s wird nicht geglättet, unter 0,15/s voll mit einem Exponentialfilter (τ = 50 ms), dazwischen fließend.
+  * **Tightening:** Unter 0,05/s wird die Bewegung proportional verkleinert, eine weiche Totzone ohne harte Kante.
+  * **Neu:** Zu Beginn eines Klicks friert die Bewegung 60 ms ein, damit sich der Zeiger beim Drücken nicht vom Ziel verschiebt.
+* Ersetzt den eigenen Filter aus 1.3.1 mit harter Totzone.
+
+### Bildschirmtastatur mit beiden Trackpads (wie in SteamOS)
+* Linkes Pad = linke Tastaturhälfte, rechtes Pad = rechte Hälfte, mit **absoluter Zuordnung**: Wo der Finger liegt, ist das Fadenkreuz. Das funktioniert auch im Vollbild-Layout (jedes Pad deckt eine Hälfte ab).
+* Tastenwahl mit Hysterese (kein Flackern auf Tastengrenzen), in Lücken wird die nächstliegende Taste gewählt, Haptik-Tick beim Tastenwechsel.
+* Getippt wird per **Pad-Klick** (Hardware oder Druckschwelle) oder wie bisher mit LT/RT bzw. LB/RB. Die Sticks bewegen die Fadenkreuze weiterhin, als Fallback für Controller ohne Trackpads.
+* Solange die Tastatur offen ist, bewegt das rechte Pad nicht den Mauszeiger, und „linkes Pad als D-Pad“ ist in Menüs aus.
+
+### Klickdruck
+* Die Live-Anzeige zeigt jetzt den Zahlenwert. Die Schwelle lässt sich unter 10 % in 1-%-Schritten einstellen. Laut SteamlessController-Messungen liegt ein ruhender Daumen bei ca. 1 % der Rohskala und ein Druck ab ca. 5 %.
+
+---
+
 ## 🚀 Version 1.3.1
 
 * **Mauszeiger mit Display-Skalierung (z. B. 140 %):** Minecraft 26.3 führt die Mausposition in SDL-Fensterpunkten (`Window.getScreenWidth`). Die Mod rechnete dagegen mit Framebuffer-Pixeln (`getWidth`). Folgen: Der Trackpad-Zeiger lief unsichtbar über den Rand hinaus und blieb dort „hängen“. Slot-Springen im Inventar und die Controller-Navigation im Config-Screen landeten an falschen Stellen. Jetzt wird überall in Fensterpunkten gerechnet.

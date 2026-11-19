@@ -318,8 +318,11 @@ public class SteamDeckConfigScreen extends Screen {
         return (row < TRACKPAD_ROWS && inRow <= PAD_ROW_H) ? row : -1;
     }
 
+    /** 1 % steps up to 10 % (where real presses usually are), 5 % steps above. */
     private static float stepPressure(float value, int delta) {
-        return Math.max(0.05f, Math.min(1.0f, Math.round((value + delta * 0.05f) * 20f) / 20f));
+        float step = (value < 0.10f || (value <= 0.101f && delta < 0)) ? 0.01f : 0.05f;
+        float next = Math.round((value + delta * step) * 100f) / 100f;
+        return Math.max(0.01f, Math.min(1.0f, next));
     }
 
     private static String toggleClickMode(String mode) {
@@ -436,6 +439,8 @@ public class SteamDeckConfigScreen extends Screen {
             int fillW = Math.round(barW * pressure);
             int col = clicked ? 0xFF00FF88 : (pressure >= threshold ? 0xFFFFAA00 : 0xFF00A5CC);
             graphics.fill(barX, y + 4, barX + fillW, y + h - 4, col);
+            String val = String.format(java.util.Locale.ROOT, "%.1f%%", pressure * 100f);
+            graphics.text(font, val, barX + barW - font.width(val) - 2, y + 4, 0xFFFFFFFF);
         } else {
             graphics.centeredText(font, "kein Finger", x + w / 2, y + 4, 0xFF555555);
         }

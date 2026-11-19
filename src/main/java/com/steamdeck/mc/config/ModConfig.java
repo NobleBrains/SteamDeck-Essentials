@@ -326,8 +326,8 @@ public class ModConfig {
             this.gyroActivation = "ALWAYS";
             this.aimItemsOnly = true;
         }
-        this.leftTrackpadClickPressure = clamp(this.leftTrackpadClickPressure, 0.05f, 1.0f);
-        this.rightTrackpadClickPressure = clamp(this.rightTrackpadClickPressure, 0.05f, 1.0f);
+        this.leftTrackpadClickPressure = clamp(this.leftTrackpadClickPressure, 0.01f, 1.0f);
+        this.rightTrackpadClickPressure = clamp(this.rightTrackpadClickPressure, 0.01f, 1.0f);
         this.leftTrackpadHapticLevel = Math.max(0, Math.min(5, this.leftTrackpadHapticLevel));
         this.rightTrackpadHapticLevel = Math.max(0, Math.min(5, this.rightTrackpadHapticLevel));
         if (this.performanceTrackIntervalSeconds < 1) this.performanceTrackIntervalSeconds = 1;
