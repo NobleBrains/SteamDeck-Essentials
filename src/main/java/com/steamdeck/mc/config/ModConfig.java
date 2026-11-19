@@ -25,7 +25,11 @@ public class ModConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static ModConfig INSTANCE;
 
-    // Power & Eco settings
+    // Device mode: "AUTO" (detect handheld hardware), "HANDHELD" or "DESKTOP".
+    // In DESKTOP mode all handheld power/performance features below are inactive.
+    public String deviceMode = "AUTO";
+
+    // Power & Eco settings (only active in HANDHELD mode)
     public int menuFpsCap = 30;
     public int acMenuFpsCap = 60; // Smoother menus on AC power while keeping fan quiet
     public int unfocusedFpsCap = 10;
@@ -57,10 +61,16 @@ public class ModConfig {
     // Input & Controller settings
     public float stickDeadzone = 0.25f;
     public boolean enable8WayStickMapping = true;
-    public float trackpadSensitivity = 1.0f;
+    public float trackpadSensitivity = 1.0f; // Native trackpad camera: 1.0 = one full swipe across the pad turns ~90 degrees
     public boolean trackpadClickJump = true;
     public boolean enableHotbarHaptics = true; // Haptic rumble on trackpad per hotbar scroll
     public boolean enableRightStickRadialMenu = true; // 3-page Radial Menu on Right Joystick
+    public float rightStickCameraSpeed = 180.0f; // Degrees per second at full right-stick deflection (when the radial menu is off)
+
+    // Native Valve controller support without Steam (Steam Controller 2026 / 2015, Steam Deck via SDL HIDAPI)
+    public boolean enableNativeSteamControllers = true; // Enables SDL's HIDAPI driver for Steam Controllers
+    public boolean nativeTrackpadCamera = true; // Right trackpad turns the camera when Steam Input is NOT active
+    public boolean steamInputBridgeOnDesktop = false; // Intercept the Steam Input bridge keys ([ ] \ / F13 F14) in DESKTOP mode too
 
     // Steam Input Hardware Bridge (Rücktasten & Stick-Touch)
     // Uses Minecraft 26.3 SDL3 Scancodes (InputConstants.KEY_LBRACKET=47, KEY_RBRACKET=48, KEY_BACKSLASH=49, KEY_SLASH=56)
@@ -98,6 +108,15 @@ public class ModConfig {
     // Action Sets: Map<ActionSetName, Map<ButtonName, ActionName>>
     public Map<String, Map<String, String>> actionSets = new HashMap<>();
 
+    public com.steamdeck.mc.platform.DeviceMode getDeviceMode() {
+        return com.steamdeck.mc.platform.DeviceMode.parse(this.deviceMode);
+    }
+
+    public void setDeviceMode(com.steamdeck.mc.platform.DeviceMode mode) {
+        this.deviceMode = mode.name();
+        save();
+    }
+
     public static synchronized ModConfig getInstance() {
         if (INSTANCE == null) {
             INSTANCE = load();
@@ -116,6 +135,7 @@ public class ModConfig {
                 ModConfig config = GSON.fromJson(reader, ModConfig.class);
                 if (config != null) {
                     config.validate();
+                    config.save(); // writes newly added options into existing config files
                     return config;
                 }
             } catch (Exception e) {
@@ -258,7 +278,22 @@ public class ModConfig {
     }
 
     private void validate() {
+        this.deviceMode = com.steamdeck.mc.platform.DeviceMode.parse(this.deviceMode).name();
         if (this.menuFpsCap < 10) this.menuFpsCap = 10;
+        if (this.acMenuFpsCap < 10) this.acMenuFpsCap = 10;
+        if (this.acChunkThreads < 1) this.acChunkThreads = 1;
+        if (this.minAfkFps < 5) this.minAfkFps = 5;
+        if (this.acMinAfkFps < 5) this.acMinAfkFps = 5;
+        this.maxAfkThrottle = clamp(this.maxAfkThrottle, 0.0f, 0.95f);
+        this.acMaxAfkThrottle = clamp(this.acMaxAfkThrottle, 0.0f, 0.95f);
+        this.maxAfkDimAlpha = clamp(this.maxAfkDimAlpha, 0.0f, 0.95f);
+        this.acMaxAfkDimAlpha = clamp(this.acMaxAfkDimAlpha, 0.0f, 0.95f);
+        this.stickDeadzone = clamp(this.stickDeadzone, 0.0f, 0.9f);
+        this.gyroSensitivityX = clamp(this.gyroSensitivityX, 0.0f, 10.0f);
+        this.gyroSensitivityY = clamp(this.gyroSensitivityY, 0.0f, 10.0f);
+        this.rightStickCameraSpeed = clamp(this.rightStickCameraSpeed, 10.0f, 1000.0f);
+        this.trackpadSensitivity = clamp(this.trackpadSensitivity, 0.1f, 10.0f);
+        if (this.performanceTrackIntervalSeconds < 1) this.performanceTrackIntervalSeconds = 1;
         if (this.unfocusedFpsCap < 1) this.unfocusedFpsCap = 5;
         if (this.batteryChunkThreads < 1) this.batteryChunkThreads = 1;
         if (this.oskScale < 0.5f) this.oskScale = 0.5f;
@@ -272,5 +307,10 @@ public class ModConfig {
             this.steamBridgeKeyR5 = 56;
         }
         initDefaultActionSets();
+    }
+
+    private static float clamp(float value, float min, float max) {
+        if (Float.isNaN(value)) return min;
+        return Math.max(min, Math.min(max, value));
     }
 }

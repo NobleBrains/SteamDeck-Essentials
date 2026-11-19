@@ -48,41 +48,52 @@ public class GyroManager {
         SteamDeckEssentials.LOGGER.info("[GYRO] Initialized {} gyro provider backends ( contextual bow/aiming trigger ready ).", providers.size());
     }
 
+    /** Minecraft's Entity.turn() multiplies its arguments by 0.15 to get degrees. */
+    private static final double TURN_UNITS_PER_DEGREE = 1.0 / 0.15;
+
     /**
      * Polled on every frame to evaluate contextual aim and apply rotation deltas.
+     *
+     * <p>All providers are drained every frame, even while not aiming. Otherwise motion that
+     * accumulated while e.g. walking around (DSU) was applied as one big camera jump the moment
+     * the bow was drawn.</p>
      */
     public void update(Minecraft client) {
         if (client == null) return;
 
-        ModConfig config = ModConfig.getInstance();
-        if (!config.enableGyroAiming) return;
+        // Use the first provider delivering motion; if several deliver the same physical gyro
+        // (e.g. SDL + DSU), stick with the one used last frame.
+        GyroData chosen = GyroData.ZERO;
+        GyroProvider chosenProvider = null;
+        for (GyroProvider provider : providers) {
+            GyroData data = provider.poll();
+            if (data.isZero()) continue;
+            if (chosenProvider == null || provider == activeProvider) {
+                chosen = data;
+                chosenProvider = provider;
+            }
+        }
+        if (chosenProvider != null) {
+            activeProvider = chosenProvider;
+        }
 
-        // 1. Disabled immediately if any screen/GUI is active
+        ModConfig config = ModConfig.getInstance();
+        if (!config.enableGyroAiming || chosen.isZero()) return;
+
+        // 1. Disabled while any screen/GUI is open
         if (client.gui != null && client.gui.screen() != null) return;
 
         // 2. Player must exist and mouse must be captured
         LocalPlayer player = client.player;
         if (player == null || !client.mouseHandler.isMouseGrabbed()) return;
 
-        // 3. Contextual Trigger: Only when actively drawing/using Bow, Crossbow, Trident, or Spyglass
-        if (config.aimItemsOnly && !isContextuallyAiming(player)) {
-            return;
-        }
+        // 3. Contextual trigger: only while drawing/using Bow, Crossbow, Trident or Spyglass
+        if (config.aimItemsOnly && !isContextuallyAiming(player)) return;
 
-        // 4. Poll all initialized providers and use whichever is actively delivering motion data
-        for (GyroProvider provider : providers) {
-            GyroData data = provider.poll();
-            if (provider.isAvailable() && activeProvider == null) {
-                activeProvider = provider;
-            }
-            if (data.pitchDelta() != 0.0f || data.yawDelta() != 0.0f) {
-                activeProvider = provider;
-                float yaw = data.yawDelta() * config.gyroSensitivityX * (config.invertGyroX ? -1.0f : 1.0f);
-                float pitch = data.pitchDelta() * config.gyroSensitivityY * (config.invertGyroY ? -1.0f : 1.0f);
-                player.turn((double) yaw, (double) pitch);
-                break;
-            }
-        }
+        // 4. Sensitivity 1.0 = 1:1 real-world rotation (frame-rate independent)
+        double yaw = chosen.yawDelta() * config.gyroSensitivityX * (config.invertGyroX ? -1.0 : 1.0);
+        double pitch = chosen.pitchDelta() * config.gyroSensitivityY * (config.invertGyroY ? -1.0 : 1.0);
+        player.turn(yaw * TURN_UNITS_PER_DEGREE, pitch * TURN_UNITS_PER_DEGREE);
     }
 
     /**
@@ -106,6 +117,9 @@ public class GyroManager {
     }
 
     public String getActiveProviderName() {
+        if (activeProvider != null && activeProvider.isAvailable()) {
+            return activeProvider.getName();
+        }
         for (GyroProvider p : providers) {
             if (p.isAvailable()) {
                 return p.getName();

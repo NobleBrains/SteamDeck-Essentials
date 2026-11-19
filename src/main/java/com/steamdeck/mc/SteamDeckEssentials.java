@@ -6,6 +6,7 @@ import com.steamdeck.mc.config.ModConfig;
 import com.steamdeck.mc.gui.VirtualKeyboard;
 import com.steamdeck.mc.input.SteamDeckInputManager;
 import com.steamdeck.mc.input.gyro.GyroManager;
+import com.steamdeck.mc.platform.PlatformDetector;
 import com.steamdeck.mc.power.SuspendHook;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -40,12 +41,20 @@ public class SteamDeckEssentials implements ClientModInitializer {
     public void onInitializeClient() {
         LOGGER.info("[SteamDeck Essentials] Initializing mod for Minecraft 26.3 on Steam Deck...");
 
-        // 1. Initialize configuration
+        // 1. Initialize configuration & detect hardware (Handheld vs. Desktop)
         ModConfig config = ModConfig.getInstance();
+        PlatformDetector.getHardware();
+        LOGGER.info("[SteamDeck Essentials] Device mode: {}", PlatformDetector.describe());
 
         // 1b. Initialize SDL Subsystems (Minecraft 26.3 only initializes SDL_INIT_VIDEO)
         try {
             SDLHints.SDL_SetHint(SDLHints.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+            // Steam Controllers (2026 "Triton" & 2015) are only exposed as real gamepads by SDL's HIDAPI
+            // driver, which is off by default. Enable it unless the user set the variable themselves.
+            // (The Steam Deck has its own HIDAPI driver that is on by default.)
+            if (config.enableNativeSteamControllers && System.getenv("SDL_JOYSTICK_HIDAPI_STEAM") == null) {
+                SDLHints.SDL_SetHint(SDLHints.SDL_HINT_JOYSTICK_HIDAPI_STEAM, "1");
+            }
             int flags = SDLInit.SDL_INIT_GAMEPAD | SDLInit.SDL_INIT_JOYSTICK | SDLInit.SDL_INIT_SENSOR;
             if ((SDLInit.SDL_WasInit(flags) & flags) != flags) {
                 boolean ok = SDLInit.SDL_InitSubSystem(flags);
@@ -66,8 +75,9 @@ public class SteamDeckEssentials implements ClientModInitializer {
 
         // 3. Initialize hardware subsystems & auto-install Steam Input VDF layout if possible
         GyroManager.getInstance().init();
-        SuspendHook.getInstance().start();
-        if (!com.steamdeck.mc.input.SteamLayoutInstaller.isLayoutInstalled()) {
+        SuspendHook.getInstance().syncWithMode();
+        // Steam Input template is only auto-installed on handhelds (never silently on a desktop PC)
+        if (PlatformDetector.isHandheld() && !com.steamdeck.mc.input.SteamLayoutInstaller.isLayoutInstalled()) {
             com.steamdeck.mc.input.SteamLayoutInstaller.installLayout();
         }
 
@@ -91,6 +101,9 @@ public class SteamDeckEssentials implements ClientModInitializer {
                 VirtualKeyboard.playClickSound();
             }
 
+            // Start/stop handheld-only background services when the device mode changes
+            SuspendHook.getInstance().syncWithMode();
+
             // Poll Gamepad / Controller
             SteamDeckInputManager.getInstance().poll(client);
 
@@ -101,7 +114,7 @@ public class SteamDeckEssentials implements ClientModInitializer {
         // 5. Screen Lifecycle Hooks (OSK Rendering & Input)
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
             // Auto-open OSK only when opening the Chat screen
-            if (config.oskAutoOpenOnInput && screen instanceof ChatScreen) {
+            if (config.oskAutoOpenOnInput && PlatformDetector.isHandheld() && screen instanceof ChatScreen) {
                 VirtualKeyboard.getInstance().setOpen(true);
             } else {
                 VirtualKeyboard.getInstance().setOpen(false);
@@ -142,6 +155,6 @@ public class SteamDeckEssentials implements ClientModInitializer {
             });
         });
 
-        LOGGER.info("[SteamDeck Essentials] Ready! Power, Controller, Gyro, and OSK subsystems active.");
+        LOGGER.info("[SteamDeck Essentials] Ready! Mode: {}", PlatformDetector.describe());
     }
 }

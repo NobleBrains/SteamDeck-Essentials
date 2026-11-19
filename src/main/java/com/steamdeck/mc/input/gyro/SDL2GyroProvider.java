@@ -5,20 +5,26 @@ import com.steamdeck.mc.input.SteamDeckInputManager;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.sdl.SDLGamepad;
 import org.lwjgl.sdl.SDLSensor;
+import org.lwjgl.sdl.SDLStdinc;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
 /**
- * Native SDL3 Gyro Provider.
- * Integrates with both SDL Gamepad embedded sensors and standalone SDL Sensor devices.
+ * Native SDL3 gyro provider: gamepad-embedded sensors (Steam Deck / Steam Controller via HIDAPI,
+ * DualSense, Switch Pro, ...) with a fallback to standalone SDL sensors.
+ * SDL reports angular velocity in rad/s; it is integrated over the real time between polls.
  */
 public class SDL2GyroProvider implements GyroProvider {
+    private static final float RAD_TO_DEG = (float) (180.0 / Math.PI);
+    private static final float DEADZONE_DEG_PER_SEC = 0.6f;
+
     private final FloatBuffer sensorBuffer = BufferUtils.createFloatBuffer(3);
     private long lastGamepadHandle = 0;
-    private boolean gamepadSensorEnabled = false;
+    private int enabledSensorType = -1;
     private long standaloneSensorHandle = 0;
     private long lastSensorScanTime = 0;
+    private long lastPollNanos = 0;
 
     @Override
     public boolean init() {
@@ -27,58 +33,65 @@ public class SDL2GyroProvider implements GyroProvider {
 
     @Override
     public GyroData poll() {
+        long now = System.nanoTime();
+        float dt = lastPollNanos == 0 ? 0.0f : Math.min(0.1f, (now - lastPollNanos) / 1_000_000_000.0f);
+        lastPollNanos = now;
+
         try {
             SDLSensor.SDL_UpdateSensors();
         } catch (Throwable ignored) {}
 
-        // 1. Check active SDL Gamepad sensor
+        // 1. Gyro embedded in the active SDL gamepad
         long handle = SteamDeckInputManager.getInstance().getActiveGamepadHandle();
         if (handle != lastGamepadHandle) {
             lastGamepadHandle = handle;
-            gamepadSensorEnabled = false;
+            enabledSensorType = -1;
         }
 
         if (handle != 0) {
-            if (!gamepadSensorEnabled) {
+            if (enabledSensorType < 0) {
                 for (int type : new int[]{SDLSensor.SDL_SENSOR_GYRO, SDLSensor.SDL_SENSOR_GYRO_L, SDLSensor.SDL_SENSOR_GYRO_R}) {
                     if (SDLGamepad.SDL_GamepadHasSensor(handle, type)) {
                         SDLGamepad.SDL_SetGamepadSensorEnabled(handle, type, true);
-                        gamepadSensorEnabled = true;
-                        SteamDeckEssentials.LOGGER.info("[GYRO] SDL Gamepad gyro sensor enabled (type {}).", type);
+                        enabledSensorType = type;
+                        SteamDeckEssentials.LOGGER.info("[GYRO] SDL gamepad gyro enabled (sensor type {}, {} Hz).",
+                                type, SDLGamepad.SDL_GetGamepadSensorDataRate(handle, type));
                         break;
                     }
                 }
             }
 
-            if (gamepadSensorEnabled) {
+            if (enabledSensorType >= 0) {
                 sensorBuffer.clear();
-                if (SDLGamepad.SDL_GetGamepadSensorData(handle, SDLSensor.SDL_SENSOR_GYRO, sensorBuffer)) {
-                    GyroData data = extractGyroData();
-                    if (data.pitchDelta() != 0.0f || data.yawDelta() != 0.0f) {
-                        return data;
-                    }
+                // Read the sensor that was actually enabled (previously always SDL_SENSOR_GYRO was read)
+                if (SDLGamepad.SDL_GetGamepadSensorData(handle, enabledSensorType, sensorBuffer)) {
+                    return toGyroData(dt);
                 }
             }
         }
 
-        // 2. Fallback: Check standalone SDL3 Sensor subsystem
-        long now = System.currentTimeMillis();
-        if (standaloneSensorHandle == 0 && (now - lastSensorScanTime > 3000)) {
-            lastSensorScanTime = now;
+        // 2. Fallback: standalone SDL sensor
+        long nowMs = System.currentTimeMillis();
+        if (standaloneSensorHandle == 0 && (nowMs - lastSensorScanTime > 3000)) {
+            lastSensorScanTime = nowMs;
             try {
                 IntBuffer sensors = SDLSensor.SDL_GetSensors();
-                if (sensors != null && sensors.hasRemaining()) {
-                    while (sensors.hasRemaining()) {
-                        int id = sensors.get();
-                        int type = SDLSensor.SDL_GetSensorTypeForID(id);
-                        if (type == SDLSensor.SDL_SENSOR_GYRO || type == SDLSensor.SDL_SENSOR_GYRO_L || type == SDLSensor.SDL_SENSOR_GYRO_R) {
-                            long sh = SDLSensor.SDL_OpenSensor(id);
-                            if (sh != 0) {
-                                standaloneSensorHandle = sh;
-                                SteamDeckEssentials.LOGGER.info("[GYRO] Opened standalone SDL Sensor: {}", SDLSensor.SDL_GetSensorName(sh));
-                                break;
+                if (sensors != null) {
+                    try {
+                        for (int i = 0; i < sensors.limit(); i++) {
+                            int id = sensors.get(i);
+                            int type = SDLSensor.SDL_GetSensorTypeForID(id);
+                            if (type == SDLSensor.SDL_SENSOR_GYRO || type == SDLSensor.SDL_SENSOR_GYRO_L || type == SDLSensor.SDL_SENSOR_GYRO_R) {
+                                long sh = SDLSensor.SDL_OpenSensor(id);
+                                if (sh != 0) {
+                                    standaloneSensorHandle = sh;
+                                    SteamDeckEssentials.LOGGER.info("[GYRO] Opened standalone SDL sensor: {}", SDLSensor.SDL_GetSensorName(sh));
+                                    break;
+                                }
                             }
                         }
+                    } finally {
+                        SDLStdinc.SDL_free(sensors);
                     }
                 }
             } catch (Throwable ignored) {}
@@ -87,45 +100,36 @@ public class SDL2GyroProvider implements GyroProvider {
         if (standaloneSensorHandle != 0) {
             sensorBuffer.clear();
             if (SDLSensor.SDL_GetSensorData(standaloneSensorHandle, sensorBuffer)) {
-                return extractGyroData();
+                return toGyroData(dt);
             }
         }
 
         return GyroData.ZERO;
     }
 
-    private GyroData extractGyroData() {
-        float gyroX = sensorBuffer.get(0);
-        float gyroY = sensorBuffer.get(1);
-        float gyroZ = sensorBuffer.get(2);
-
-        float pitch = -gyroX * 2.2f;
-        float yaw = -gyroZ * 2.2f;
-        if (Math.abs(gyroY) > Math.abs(gyroZ)) {
-            yaw = -gyroY * 2.2f;
-        }
-
-        if (Math.abs(pitch) < 0.015f) pitch = 0.0f;
-        if (Math.abs(yaw) < 0.015f) yaw = 0.0f;
-
-        return new GyroData(pitch, yaw);
+    private GyroData toGyroData(float dt) {
+        // SDL: [0] = pitch (x), [1] = yaw (y), [2] = roll (z) in rad/s
+        float pitch = sensorBuffer.get(0) * RAD_TO_DEG;
+        float yaw = sensorBuffer.get(1) * RAD_TO_DEG;
+        float roll = sensorBuffer.get(2) * RAD_TO_DEG;
+        return GyroData.fromRates(pitch, yaw, roll, dt, DEADZONE_DEG_PER_SEC);
     }
 
     @Override
     public boolean isAvailable() {
-        return gamepadSensorEnabled || standaloneSensorHandle != 0;
+        return enabledSensorType >= 0 || standaloneSensorHandle != 0;
     }
 
     @Override
     public void close() {
-        if (lastGamepadHandle != 0 && gamepadSensorEnabled) {
-            SDLGamepad.SDL_SetGamepadSensorEnabled(lastGamepadHandle, SDLSensor.SDL_SENSOR_GYRO, false);
+        if (lastGamepadHandle != 0 && enabledSensorType >= 0) {
+            SDLGamepad.SDL_SetGamepadSensorEnabled(lastGamepadHandle, enabledSensorType, false);
         }
         if (standaloneSensorHandle != 0) {
             SDLSensor.SDL_CloseSensor(standaloneSensorHandle);
             standaloneSensorHandle = 0;
         }
-        gamepadSensorEnabled = false;
+        enabledSensorType = -1;
     }
 
     @Override

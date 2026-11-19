@@ -22,6 +22,7 @@ public abstract class CommandSuggestionsMixin {
             constant = @Constant(intValue = 72)
     )
     private int modifySuggestionsTopY(int original) {
+        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) return original;
         return this.input != null ? this.input.getY() + this.input.getHeight() + (this.input.isBordered() ? 2 : 1) : original;
     }
 
@@ -30,6 +31,7 @@ public abstract class CommandSuggestionsMixin {
             constant = @Constant(intValue = 72)
     )
     private int modifyUsageTopY(int original) {
+        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) return original;
         return this.input != null ? this.input.getY() + this.input.getHeight() + (this.input.isBordered() ? 2 : 1) : original;
     }
 }

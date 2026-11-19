@@ -1,6 +1,35 @@
 # SteamDeck Essentials (Minecraft 26.3 Fabric Mod)
 
-Eine umfassende All-in-One-Optimierungsmod speziell für das Steam Deck (LCD & OLED) unter Minecraft 26.3 (SDL3).
+Eine umfassende All-in-One-Optimierungsmod speziell für das Steam Deck (LCD & OLED) unter Minecraft 26.3 (SDL3) – mit Desktop-Modus für den PC und nativer Unterstützung des Steam Controllers (2026) ohne Steam.
+
+---
+
+## 🖥️ 0. Handheld- & Desktop-Modus (`com.steamdeck.mc.platform`)
+Die Mod läuft in einem von zwei Modi:
+
+| | **Handheld** | **Desktop** |
+|---|---|---|
+| FPS-Caps (Menü, AFK, Akku, 90/60-Hz-Thermal-Cap) | ✅ | ❌ Vanilla |
+| AFK-Dimming, Low-Battery-Saver, Chunk-Thread-Limit | ✅ | ❌ |
+| Akku-HUD (Pause/F3), CSV-Performance-Tracker | ✅ | ❌ |
+| Suspend-Save (Welt speichern beim Standby) | ✅ | ❌ |
+| Chat oben + invertiertes Scrollen (für die Bildschirmtastatur) | ✅ | ❌ Vanilla |
+| OSK automatisch öffnen (manuell per `F12` immer möglich) | ✅ | ❌ |
+| Steam-Input-Bridge-Tasten (`[ ] \ / F13 F14`) abfangen | ✅ | ❌ (optional: `steamInputBridgeOnDesktop`) |
+| Steam-Layout automatisch installieren | ✅ | ❌ (Button im Tab `⚙️ Bridge`) |
+| Controller-Engine, Action-Sets, Radial-Menü, Gyro, Haptik | ✅ | ✅ |
+
+* **Automatische Erkennung (`deviceMode: "AUTO"`):** über die DMI-Kennungen in `/sys/class/dmi/id` (funktioniert auch in der Prism-Flatpak-Sandbox). Erkannt werden Steam Deck LCD (`Jupiter`, 60-Hz-Cap) und OLED (`Galileo`, 90-Hz-Cap), außerdem ROG Ally, Legion Go, MSI Claw, AYANEO, OneXPlayer, GPD Win und ZOTAC Zone. Fallback: Umgebungsvariable `SteamDeck=1` (SteamOS Game Mode). Laptops gelten als Desktop.
+* **Manuell überschreiben:** Im Spiel unter `Pausemenü → 🎮 Controller → ⚡ Akku & Eco → Gerätemodus` (Auto → Handheld → Desktop) oder in der Config `"deviceMode": "HANDHELD"` / `"DESKTOP"`. Der Wechsel greift sofort, ohne Neustart.
+* Der aktive Modus steht im Log (`[PLATFORM]`) und im F3-HUD.
+
+## 🎮 0b. Steam Controller (2026) & Steam Deck ohne Steam
+* SDL3 (in Minecraft eingebaut) kann Valve-Controller über seinen **HIDAPI-Treiber** direkt lesen. Die Mod aktiviert dafür `SDL_JOYSTICK_HIDAPI_STEAM=1` (abschaltbar mit `enableNativeSteamControllers`; eine selbst gesetzte Umgebungsvariable hat Vorrang).
+* **Geräteauswahl:** native Valve-Controller (Steam Deck, Steam Controller 2026 `28de:1302–1305`, 2015) werden vor dem virtuellen Steam-Input-Gamepad und anderen Gamepads bevorzugt – auch wenn sie später eingesteckt werden.
+* **Trackpad-Kamera:** Ohne Steam Input ist das rechte Trackpad keine Maus mehr. Bei nativen Valve-Controllern dreht es deshalb direkt die Kamera (`nativeTrackpadCamera`, Empfindlichkeit über „Trackpad Sensitivität“: 100 % = ein Wisch über das ganze Pad ≈ 90°).
+* **Rechter Stick als Kamera:** Wenn das Radial-Menü aus ist, steuert der rechte Stick die Kamera pro Frame (`rightStickCameraSpeed`, Standard 180°/s, quadratische Kennlinie).
+* **Diagnose:** Beim Verbinden schreibt die Mod Name, Vendor/Product-ID, Typ, Anzahl Touchpads, Gyro/Accel, Rumble und Zusatztasten (L4/R4/L5/R5, Touchpad, MISC) ins Log (`[INPUT] Connected SDL gamepad ...`).
+* **Hinweis:** Läuft Steam im Hintergrund mit Desktop-Layout, kann Steam das Trackpad zusätzlich als Maus nutzen (doppelte Kamerabewegung) – dann `nativeTrackpadCamera` ausschalten oder Steam beenden. Linux ≥ 7.3 bringt zusätzlich den Kernel-Treiber `hid-steam` für den 2026-Controller mit.
 
 ---
 
@@ -13,6 +42,7 @@ Eine umfassende All-in-One-Optimierungsmod speziell für das Steam Deck (LCD & O
   * Stufenloses Absenken der FPS bei Inaktivität (Akku: ab 2 Min. bis -80 % / 15 FPS; Netzbetrieb: ab 4 Min. bis -50 % / 40 FPS).
   * Sanftes OLED-Screen-Dimming (65 % im Akkubetrieb, 30 % im Netzbetrieb) und Reduktion der Hintergrund-Chunk-Threads auf 1 Idle-Worker.
   * Sofortiges Aufwachen (0 ms Latenz) bei jeder Stick-, Button-, Trackpad-, Touch- oder Tastatureingabe.
+* *Alle Funktionen dieses Abschnitts sind nur im **Handheld-Modus** aktiv.*
 * **Low-Battery Eco-Saver:**
   * Automatischer Batterieschutz bei ≤ 20 % (60 FPS Cap) und ≤ 10 % Akku (45 FPS Cap) mit dezentem HUD-Hinweis.
 * **Dynamic Chunk Threading:**

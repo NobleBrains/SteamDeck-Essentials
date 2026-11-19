@@ -3,7 +3,7 @@
   "id": "steamdeck_essentials",
   "version": "${version}",
   "name": "SteamDeck Essentials",
-  "description": "Comprehensive Steam Deck optimization mod: battery life maximization, native controller & trackpad engine, contextual gyro-aiming, touch OSK & handheld GUI fixes.",
+  "description": "Steam Deck optimization mod with automatic handheld/desktop mode: battery life maximization (handheld only), native Steam Deck & Steam Controller engine without Steam, contextual gyro-aiming, touch OSK & handheld GUI fixes.",
   "authors": [
     "lukhicken"
   ],

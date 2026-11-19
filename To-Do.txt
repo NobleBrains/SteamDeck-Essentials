@@ -85,3 +85,14 @@
 
 
 
+
+- [x] **Handheld- & Desktop-Modus** (Auto-Erkennung + manueller Schalter, Desktop = keine Eco/FPS-Eingriffe)
+- [x] **Steam Controller (2026) ohne Steam: Grundlage** (SDL-HIDAPI, Geräte-Priorität, Trackpad-Kamera, Diagnose-Log)
+
+- [ ] **Steam Controller (2026) mit echtem Gerät testen**
+  - Log-Zeile `[INPUT] Connected SDL gamepad ...` prüfen: Wird er als `28de:130x` erkannt? Wie viele Touchpads, Gyro, Rumble, Paddles (L4/R4/L5/R5)?
+  - Trackpad-Kamera: richtiges Pad (Index 0/1)? Richtung & Empfindlichkeit?
+  - Gyro-Vorzeichen beim Bogen-Zielen (sonst `invertGyroX/Y`).
+  - Test mit und ohne laufendes Steam (doppelte Mausbewegung durch das Steam-Desktop-Layout?).
+  - Prism-Flatpak: Zugriff auf `/dev/hidraw*` (braucht `--device=all` + udev-Regeln aus `steam-devices`).
+- [ ] Controller-Akku (`SDL_GetGamepadPowerInfo`) im Pausemenü anzeigen, wenn Desktop-Modus + Funk-Controller

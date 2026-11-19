@@ -73,7 +73,8 @@ public class PerformanceTracker {
      */
     public void tick(Minecraft client) {
         ModConfig config = ModConfig.getInstance();
-        if (!config.enablePerformanceTracking || client == null) {
+        if (!config.enablePerformanceTracking || client == null
+                || !com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
             closeWriter();
             return;
         }
@@ -131,7 +132,7 @@ public class PerformanceTracker {
             int loadedChunks = (client.level != null) ? client.level.getChunkSource().getLoadedChunksCount() : 0;
             long ramUsedMb = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024L * 1024L);
 
-            String line = String.format("%s,%s,%d,%d,%d,%.2f,%.2f,%s,%d,%d",
+            String line = String.format(java.util.Locale.ROOT, "%s,%s,%d,%d,%d,%.2f,%.2f,%s,%d,%d",
                     timestamp, category, fps, targetFps, percent, watts, volts, status, loadedChunks, ramUsedMb);
 
             this.writer.write(line);

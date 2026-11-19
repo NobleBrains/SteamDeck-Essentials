@@ -22,6 +22,7 @@ public class BatteryHudRenderer {
      */
     public static void renderPauseScreenHud(GuiGraphicsExtractor graphics, int screenWidth, int screenHeight) {
         if (!ModConfig.getInstance().enableBatteryHudInPause) return;
+        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) return;
 
         BatteryInfo info = BatteryReader.getBatteryInfo();
         if (!info.isAvailable()) return;
@@ -59,15 +60,22 @@ public class BatteryHudRenderer {
         Minecraft client = Minecraft.getInstance();
         Font font = client.font;
 
-        BatteryInfo info = BatteryReader.getBatteryInfo();
-        String hudText = info.isAvailable() ? ("Steam Deck " + info.toHudString()) : "Steam Deck";
+        boolean handheld = com.steamdeck.mc.platform.PlatformDetector.isHandheld();
+        BatteryInfo info = handheld ? BatteryReader.getBatteryInfo() : BatteryInfo.UNAVAILABLE;
+        String modeText = "Modus: " + com.steamdeck.mc.platform.PlatformDetector.describe();
+        String hudText = info.isAvailable() ? (modeText + " • " + info.toHudString()) : modeText;
 
         if (ModConfig.getInstance().enableF3ControllerDebug) {
             String controllerTelemetry = com.steamdeck.mc.input.SteamDeckInputManager.getInstance().getDebugTelemetry();
             String gyroTelemetry = "Gyro: " + com.steamdeck.mc.input.gyro.GyroManager.getInstance().getActiveProviderName();
-            String afkTelemetry = "Power: " + (com.steamdeck.mc.power.PowerManager.getInstance().isAfkThrottled()
-                    ? String.format("AFK (-%d%% FPS)", Math.round((1f - com.steamdeck.mc.power.PowerManager.getInstance().getAfkThrottleFactor()) * 100f))
-                    : "Aktiv (100% FPS)");
+            String afkTelemetry;
+            if (!handheld) {
+                afkTelemetry = "Power: Desktop (Eco-Engine aus)";
+            } else {
+                afkTelemetry = "Power: " + (com.steamdeck.mc.power.PowerManager.getInstance().isAfkThrottled()
+                        ? String.format("AFK (-%d%% FPS)", Math.round((1f - com.steamdeck.mc.power.PowerManager.getInstance().getAfkThrottleFactor()) * 100f))
+                        : "Aktiv (100% FPS)");
+            }
 
             int maxW = Math.max(font.width(hudText), Math.max(font.width(controllerTelemetry), Math.max(font.width(gyroTelemetry), font.width(afkTelemetry))));
             int dx = screenWidth - maxW - 8;
@@ -83,6 +91,7 @@ public class BatteryHudRenderer {
         }
 
         if (!ModConfig.getInstance().enableBatteryHudInF3 || !info.isAvailable()) return;
+        hudText = "Steam Deck " + info.toHudString();
 
         int textWidth = font.width(hudText);
         int x = screenWidth - textWidth - 4;
@@ -98,6 +107,8 @@ public class BatteryHudRenderer {
     public static void renderMenuControllerHints(GuiGraphicsExtractor graphics, Screen screen, int screenWidth, int screenHeight) {
         if (!ModConfig.getInstance().enableControllerMenuHints) return;
         if (VirtualKeyboard.getInstance().isOpen()) return;
+        // Only useful while a controller is actually being used (not for mouse/keyboard players on desktop)
+        if (!com.steamdeck.mc.input.SteamDeckInputManager.getInstance().isControllerRecentlyUsed()) return;
         if (!(screen instanceof AbstractContainerScreen)) return;
 
         Minecraft client = Minecraft.getInstance();

@@ -1,86 +1,98 @@
 package com.steamdeck.mc.power;
 
-import com.steamdeck.mc.SteamDeckEssentials;
 import com.steamdeck.mc.config.ModConfig;
+import com.steamdeck.mc.platform.PlatformDetector;
 import net.minecraft.TracingExecutor;
 
-import java.util.concurrent.*;
+import java.util.List;
+import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Manages background chunk compilation concurrency without blocking shared worker threads.
- * Uses a dedicated, isolated ThreadPoolExecutor when running on battery to prevent CPU spikes,
- * while routing tasks to the vanilla background executor on AC power.
+ * Limits background chunk-mesh compilation concurrency on handhelds.
+ *
+ * <p>Chunk compile tasks are routed to a small dedicated, low-priority pool
+ * (battery: {@code batteryChunkThreads}, AC: {@code acChunkThreads}, AFK: 1 thread).
+ * In DESKTOP mode or with the feature disabled, every task goes to Minecraft's own
+ * background executor untouched. The decision is made per task, so switching the
+ * device mode at runtime takes effect immediately.</p>
  */
 public class DynamicChunkThreading {
     private static final AtomicInteger THREAD_COUNTER = new AtomicInteger(1);
-    private static ThreadPoolExecutor batteryPool;
-    private static int currentPoolSize = 2;
+    private static ThreadPoolExecutor pool;
+    private static volatile int currentPoolSize = 0;
 
-    /**
-     * Checks if dynamic chunk threading is active (both on Battery and AC power to keep fan quiet & FPS locked).
-     */
     public static boolean isThrottlingActive() {
-        ModConfig config = ModConfig.getInstance();
-        return config.enableDynamicChunkThreading;
+        return ModConfig.getInstance().enableDynamicChunkThreading && PlatformDetector.isHandheld();
     }
 
-    /**
-     * Retrieves or updates the dedicated thread pool for chunk building.
-     */
-    private static synchronized ThreadPoolExecutor getOrCreateBatteryPool(int desiredThreads) {
-        if (batteryPool == null || batteryPool.isShutdown()) {
-            currentPoolSize = desiredThreads;
-            batteryPool = new ThreadPoolExecutor(
-                    desiredThreads,
-                    desiredThreads,
-                    60L,
-                    TimeUnit.SECONDS,
-                    new LinkedBlockingQueue<>(),
-                    r -> {
-                        Thread t = new Thread(r, "SteamDeck-Chunk-Worker-" + THREAD_COUNTER.getAndIncrement());
-                        t.setDaemon(true);
-                        t.setPriority(Thread.NORM_PRIORITY - 1);
-                        return t;
-                    }
-            );
-        } else if (currentPoolSize != desiredThreads && desiredThreads > 0) {
-            if (desiredThreads < currentPoolSize) {
-                batteryPool.setCorePoolSize(desiredThreads);
-                batteryPool.setMaximumPoolSize(desiredThreads);
-            } else {
-                batteryPool.setMaximumPoolSize(desiredThreads);
-                batteryPool.setCorePoolSize(desiredThreads);
-            }
-            currentPoolSize = desiredThreads;
+    private static ThreadPoolExecutor getPool(int desiredThreads) {
+        ThreadPoolExecutor p = pool;
+        if (p != null && currentPoolSize == desiredThreads && !p.isShutdown()) {
+            return p; // fast path without locking
         }
-        return batteryPool;
+        synchronized (DynamicChunkThreading.class) {
+            if (pool == null || pool.isShutdown()) {
+                pool = new ThreadPoolExecutor(
+                        desiredThreads, desiredThreads,
+                        60L, TimeUnit.SECONDS,
+                        new LinkedBlockingQueue<>(),
+                        r -> {
+                            Thread t = new Thread(r, "SteamDeck-Chunk-Worker-" + THREAD_COUNTER.getAndIncrement());
+                            t.setDaemon(true);
+                            t.setPriority(Thread.NORM_PRIORITY - 1);
+                            return t;
+                        });
+                pool.allowCoreThreadTimeOut(true);
+                currentPoolSize = desiredThreads;
+            } else if (currentPoolSize != desiredThreads) {
+                // Order matters: core must never exceed max
+                if (desiredThreads < currentPoolSize) {
+                    pool.setCorePoolSize(desiredThreads);
+                    pool.setMaximumPoolSize(desiredThreads);
+                } else {
+                    pool.setMaximumPoolSize(desiredThreads);
+                    pool.setCorePoolSize(desiredThreads);
+                }
+                currentPoolSize = desiredThreads;
+            }
+            return pool;
+        }
     }
 
     /**
-     * Wraps Minecraft's chunk background executor with an isolated, non-blocking pool.
-     * Uses 2 threads on Battery, 3 threads on AC Power (Netzbetrieb) to maintain 90/60 FPS while keeping the fan silent,
-     * and 1 thread during AFK.
+     * Wraps Minecraft's chunk background executor. Only {@link ExecutorService#execute} is
+     * redirected; lifecycle methods are deliberately NOT forwarded to Minecraft's shared
+     * {@code Util.backgroundExecutor()}, which is used by many other systems and must never be
+     * shut down because a chunk renderer was rebuilt.
      */
     public static TracingExecutor wrapExecutor(TracingExecutor original) {
         if (original == null) return null;
 
         ExecutorService originalService = original.service();
         ExecutorService dynamicService = new AbstractExecutorService() {
+            private volatile boolean shutdown = false;
+
             @Override
             public void execute(Runnable command) {
                 ModConfig config = ModConfig.getInstance();
-                boolean isAfk = config.enableAfkChunkWorkerIdle && PowerManager.getInstance().isAfkThrottled();
+                if (!PlatformDetector.isHandheld()) {
+                    originalService.execute(command);
+                    return;
+                }
 
+                boolean isAfk = config.enableAfkChunkWorkerIdle && PowerManager.getInstance().isAfkThrottled();
                 if (isAfk) {
-                    ThreadPoolExecutor pool = getOrCreateBatteryPool(1);
-                    pool.execute(command);
+                    getPool(1).execute(command);
                 } else if (config.enableDynamicChunkThreading) {
                     int threads = BatteryReader.isOnBattery()
                             ? Math.max(1, config.batteryChunkThreads)
-                            : Math.max(2, config.acChunkThreads);
-                    ThreadPoolExecutor pool = getOrCreateBatteryPool(threads);
-                    pool.execute(command);
+                            : Math.max(1, config.acChunkThreads);
+                    getPool(threads).execute(command);
                 } else {
                     originalService.execute(command);
                 }
@@ -88,33 +100,28 @@ public class DynamicChunkThreading {
 
             @Override
             public void shutdown() {
-                synchronized (DynamicChunkThreading.class) {
-                    if (batteryPool != null) batteryPool.shutdown();
-                }
-                originalService.shutdown();
+                shutdown = true;
             }
 
             @Override
-            public java.util.List<Runnable> shutdownNow() {
-                synchronized (DynamicChunkThreading.class) {
-                    if (batteryPool != null) batteryPool.shutdownNow();
-                }
-                return originalService.shutdownNow();
+            public List<Runnable> shutdownNow() {
+                shutdown = true;
+                return List.of();
             }
 
             @Override
             public boolean isShutdown() {
-                return originalService.isShutdown();
+                return shutdown;
             }
 
             @Override
             public boolean isTerminated() {
-                return originalService.isTerminated();
+                return shutdown;
             }
 
             @Override
-            public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
-                return originalService.awaitTermination(timeout, unit);
+            public boolean awaitTermination(long timeout, TimeUnit unit) {
+                return true;
             }
         };
 

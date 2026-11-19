@@ -30,8 +30,15 @@ for user_cfg in "$STEAM_DIR"/steamapps/common/"Steam Controller Configs"/*/confi
     if [ -d "$user_cfg" ]; then
         mkdir -p "$user_cfg/prism launcher" "$user_cfg/minecraft"
         if [ -f "$TEMPLATES_DIR/controller_neptune_steamdeck_essentials.vdf" ]; then
-            cp "$TEMPLATES_DIR/controller_neptune_steamdeck_essentials.vdf" "$user_cfg/prism launcher/controller_neptune.vdf"
-            cp "$TEMPLATES_DIR/controller_neptune_steamdeck_essentials.vdf" "$user_cfg/minecraft/controller_neptune.vdf"
+            for target in "$user_cfg/prism launcher/controller_neptune.vdf" "$user_cfg/minecraft/controller_neptune.vdf"; do
+                # Keep the user's own layout once before replacing it
+                if [ -f "$target" ] && [ ! -f "$target.bak-steamdeck-essentials" ] \
+                        && ! cmp -s "$target" "$TEMPLATES_DIR/controller_neptune_steamdeck_essentials.vdf"; then
+                    cp "$target" "$target.bak-steamdeck-essentials"
+                    echo "Backed up existing layout to $target.bak-steamdeck-essentials"
+                fi
+                cp "$TEMPLATES_DIR/controller_neptune_steamdeck_essentials.vdf" "$target"
+            done
             echo "Configured shortcut layouts in $user_cfg"
         fi
     fi

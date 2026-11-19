@@ -19,6 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class HudMixin {
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void onExtractHud(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker, CallbackInfo ci) {
+        com.steamdeck.mc.input.SteamDeckInputManager.getInstance().pollCameraFrame(Minecraft.getInstance());
         GyroManager.getInstance().update(Minecraft.getInstance());
         RadialMenuOverlay.getInstance().render(graphics, graphics.guiWidth(), graphics.guiHeight());
         PowerManager.getInstance().renderAfkOverlay(graphics, graphics.guiWidth(), graphics.guiHeight());

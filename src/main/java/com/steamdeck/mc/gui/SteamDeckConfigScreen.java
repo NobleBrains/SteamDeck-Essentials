@@ -248,6 +248,16 @@ public class SteamDeckConfigScreen extends Screen {
         int rowW = 340;
         int rowH = 16;
 
+        // Device mode (Auto / Handheld / Desktop)
+        boolean modeHover = mouseX >= x && mouseX <= x + rowW && mouseY >= y && mouseY <= y + rowH;
+        graphics.fill(x, y, x + rowW, y + rowH, modeHover ? 0xFF2A3D52 : 0xFF1E3A4A);
+        graphics.outline(x, y, rowW, rowH, modeHover ? 0xFF00FFCC : 0xFF00E5FF);
+        String modeLabel = "Gerätemodus: " + config.getDeviceMode().getLabel()
+                + "  →  " + com.steamdeck.mc.platform.PlatformDetector.describe();
+        graphics.text(font, font.plainSubstrByWidth(modeLabel, rowW - 16), x + 8, y + (rowH - 7) / 2, 0xFF00FFCC);
+        y += rowH + 3;
+        int ecoRowsTop = y;
+
         renderToggleOption(graphics, font, x, y, rowW, rowH, "AFK Drosselung (Akku -80% / Netz -50%)", config.enableDynamicAfkThrottle, mouseX, mouseY);
         y += rowH + 3;
         renderToggleOption(graphics, font, x, y, rowW, rowH, "AFK Display-Dimming (Akku 65% / Netz 30%)", config.enableAfkScreenDimming, mouseX, mouseY);
@@ -261,6 +271,16 @@ public class SteamDeckConfigScreen extends Screen {
         renderToggleOption(graphics, font, x, y, rowW, rowH, "Performance CSV-Tracker (Debug-Log)", config.enablePerformanceTracking, mouseX, mouseY);
         y += rowH + 3;
         renderToggleOption(graphics, font, x, y, rowW, rowH, "F3 Telemetrie-HUD", config.enableF3ControllerDebug, mouseX, mouseY);
+        y += rowH + 3;
+        renderToggleOption(graphics, font, x, y, rowW, rowH, "Trackpad-Kamera ohne Steam (nativ)", config.nativeTrackpadCamera, mouseX, mouseY);
+        y += rowH + 3;
+
+        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
+            // Dim the handheld-only power options (AFK, dimming, chunk threads, thermal cap)
+            graphics.fill(x, ecoRowsTop, x + rowW, ecoRowsTop + 4 * (rowH + 3) - 3, 0x99000000);
+            graphics.centeredText(font, "Desktop-Modus: Akku-, FPS- & Eco-Funktionen sind inaktiv",
+                    x + rowW / 2, y + 2, 0xFFFFAA00);
+        }
     }
 
     private void renderBridgeAndHardwareTab(GuiGraphicsExtractor graphics, Font font, int mouseX, int mouseY) {
@@ -720,6 +740,7 @@ public class SteamDeckConfigScreen extends Screen {
                 cfg.enableHotbarHaptics = true;
                 cfg.enablePerformanceTracking = true;
                 cfg.enableF3ControllerDebug = true;
+                cfg.nativeTrackpadCamera = true;
                 cfg.save();
                 VirtualKeyboard.playClickSound();
             } else if (this.currentTab == 4) {
@@ -791,6 +812,12 @@ public class SteamDeckConfigScreen extends Screen {
 
             if (mouseX >= x && mouseX <= x + rowW) {
                 if (mouseY >= y && mouseY <= y + rowH) {
+                    config.setDeviceMode(config.getDeviceMode().next());
+                    VirtualKeyboard.playClickSound();
+                    return true;
+                }
+                y += rowH + 3;
+                if (mouseY >= y && mouseY <= y + rowH) {
                     config.enableDynamicAfkThrottle = !config.enableDynamicAfkThrottle;
                     config.save();
                     VirtualKeyboard.playClickSound();
@@ -834,6 +861,13 @@ public class SteamDeckConfigScreen extends Screen {
                 y += rowH + 3;
                 if (mouseY >= y && mouseY <= y + rowH) {
                     config.enableF3ControllerDebug = !config.enableF3ControllerDebug;
+                    config.save();
+                    VirtualKeyboard.playClickSound();
+                    return true;
+                }
+                y += rowH + 3;
+                if (mouseY >= y && mouseY <= y + rowH) {
+                    config.nativeTrackpadCamera = !config.nativeTrackpadCamera;
                     config.save();
                     VirtualKeyboard.playClickSound();
                     return true;
@@ -980,7 +1014,7 @@ public class SteamDeckConfigScreen extends Screen {
             return;
         }
 
-        int maxRows = (this.currentTab < 3) ? LEFT_COLUMN_BUTTONS.length : 7;
+        int maxRows = (this.currentTab < 3) ? LEFT_COLUMN_BUTTONS.length : (this.currentTab == 3 ? 9 : 7);
         int maxCols = (this.currentTab < 3) ? 1 : 0;
 
         if (this.navRow == -1) {
@@ -994,11 +1028,11 @@ public class SteamDeckConfigScreen extends Screen {
         int targetX;
         int targetY;
         if (this.navRow == -1) {
-            int tabBarWidth = Math.min(450, this.width - 16);
-            int tabW = (tabBarWidth - 16) / 5;
-            int startX = (this.width - tabBarWidth) / 2;
-            targetX = startX + this.currentTab * (tabW + 4) + tabW / 2;
-            targetY = 30;
+            // Same geometry as the tab bar in extractRenderState()
+            int tabW = Math.min(95, (this.width - 24) / 5);
+            int startX = (this.width - tabW * 5 - 4 * 3) / 2;
+            targetX = startX + this.currentTab * (tabW + 3) + tabW / 2;
+            targetY = 27 + 17 / 2;
         } else if (this.navRow == maxRows) {
             int btnY = this.height - 23;
             targetX = (this.navCol == 0) ? 74 : (this.width - 62);

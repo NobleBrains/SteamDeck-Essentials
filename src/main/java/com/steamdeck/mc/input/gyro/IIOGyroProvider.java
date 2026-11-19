@@ -16,6 +16,7 @@ public class IIOGyroProvider implements GyroProvider {
     private Path devicePath = null;
     private double scale = 0.001; // default scale rad/s
     private boolean available = false;
+    private long lastPollNanos = 0;
 
     @Override
     public boolean init() {
@@ -48,23 +49,21 @@ public class IIOGyroProvider implements GyroProvider {
 
     @Override
     public GyroData poll() {
-        if (!available || devicePath == null) return GyroData.ZERO;
+        long now = System.nanoTime();
+        float dt = lastPollNanos == 0 ? 0.0f : Math.min(0.1f, (now - lastPollNanos) / 1_000_000_000.0f);
+        lastPollNanos = now;
+
+        // IIO sensors of laptops/tablets are not controllers: only used in handheld mode
+        if (!available || devicePath == null || !com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
+            return GyroData.ZERO;
+        }
 
         try {
-            // Read angular velocities (X, Y, Z)
-            double rawX = readDoubleFile(devicePath.resolve("in_anglvel_x_raw"), 0.0);
-            double rawY = readDoubleFile(devicePath.resolve("in_anglvel_y_raw"), 0.0);
-            double rawZ = readDoubleFile(devicePath.resolve("in_anglvel_z_raw"), 0.0);
-
-            // Convert to degrees per second / frame delta
-            float pitch = (float) (rawX * scale * 1.5);
-            float yaw = (float) (rawZ * scale * 1.5);
-
-            // Apply deadzone to avoid gyro drift
-            if (Math.abs(pitch) < 0.015f) pitch = 0.0f;
-            if (Math.abs(yaw) < 0.015f) yaw = 0.0f;
-
-            return new GyroData(pitch, yaw);
+            // in_anglvel_*_raw * in_anglvel_scale = rad/s
+            float x = (float) Math.toDegrees(readDoubleFile(devicePath.resolve("in_anglvel_x_raw"), 0.0) * scale);
+            float y = (float) Math.toDegrees(readDoubleFile(devicePath.resolve("in_anglvel_y_raw"), 0.0) * scale);
+            float z = (float) Math.toDegrees(readDoubleFile(devicePath.resolve("in_anglvel_z_raw"), 0.0) * scale);
+            return GyroData.fromRates(x, y, z, dt, 0.8f);
         } catch (Exception e) {
             return GyroData.ZERO;
         }
@@ -81,7 +80,7 @@ public class IIOGyroProvider implements GyroProvider {
 
     @Override
     public boolean isAvailable() {
-        return available;
+        return available && com.steamdeck.mc.platform.PlatformDetector.isHandheld();
     }
 
     @Override

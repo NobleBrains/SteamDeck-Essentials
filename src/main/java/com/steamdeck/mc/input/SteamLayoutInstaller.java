@@ -67,7 +67,7 @@ public class SteamLayoutInstaller {
                     Path templatesDir = steamDir.resolve("controller_base/templates");
                     Files.createDirectories(templatesDir);
                     Path targetTemplate = templatesDir.resolve(TEMPLATE_FILENAME);
-                    Files.write(targetTemplate, vdfBytes);
+                    writeIfChanged(targetTemplate, vdfBytes, false);
                     installedCount++;
 
                     // Also configure user shortcut directories (Prism Launcher / Minecraft)
@@ -80,7 +80,8 @@ public class SteamLayoutInstaller {
                                     for (String appName : new String[]{"prism launcher", "prismlauncher", "minecraft"}) {
                                         Path appCfgDir = configDir.resolve(appName);
                                         Files.createDirectories(appCfgDir);
-                                        Files.write(appCfgDir.resolve("controller_neptune.vdf"), vdfBytes);
+                                        // The user's own layout for this app may live here: keep a backup
+                                        writeIfChanged(appCfgDir.resolve("controller_neptune.vdf"), vdfBytes, true);
                                     }
                                 }
                             }
@@ -107,6 +108,27 @@ public class SteamLayoutInstaller {
             SteamDeckEssentials.LOGGER.warn("[INPUT] Failed to install Steam Input layout", e);
             return false;
         }
+    }
+
+    /**
+     * Writes the file only if its content differs. With {@code backup}, an existing file that is
+     * not ours is copied to {@code <name>.bak-steamdeck-essentials} once before it is replaced.
+     */
+    private static void writeIfChanged(Path target, byte[] content, boolean backup) throws java.io.IOException {
+        if (Files.exists(target)) {
+            byte[] existing = Files.readAllBytes(target);
+            if (java.util.Arrays.equals(existing, content)) {
+                return;
+            }
+            if (backup) {
+                Path bak = target.resolveSibling(target.getFileName() + ".bak-steamdeck-essentials");
+                if (!Files.exists(bak)) {
+                    Files.copy(target, bak);
+                    SteamDeckEssentials.LOGGER.info("[INPUT] Backed up existing Steam layout to {}", bak);
+                }
+            }
+        }
+        Files.write(target, content);
     }
 
     private static List<Path> findSteamDirectories() {

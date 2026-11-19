@@ -1,6 +1,7 @@
 package com.steamdeck.mc.power;
 
 import com.steamdeck.mc.config.ModConfig;
+import com.steamdeck.mc.platform.PlatformDetector;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -55,7 +56,7 @@ public class PowerManager {
      */
     public float getAfkThrottleFactor() {
         ModConfig config = ModConfig.getInstance();
-        if (!config.enableDynamicAfkThrottle) return 1.0f;
+        if (!config.enableDynamicAfkThrottle || !PlatformDetector.isHandheld()) return 1.0f;
 
         boolean onBattery = BatteryReader.isOnBattery();
         long idleMs = getIdleTimeMs();
@@ -86,6 +87,8 @@ public class PowerManager {
      */
     public int getCustomFramerateCap(Minecraft client) {
         if (client == null) return -1;
+        // Desktop mode: never touch Minecraft's own frame rate handling
+        if (!PlatformDetector.isHandheld()) return -1;
 
         ModConfig config = ModConfig.getInstance();
         boolean onBattery = BatteryReader.isOnBattery();
@@ -96,6 +99,7 @@ public class PowerManager {
         }
 
         // 2. Base target FPS: menu cap (30 on battery, 60 on AC) or in-game target (90 OLED / 60 LCD)
+        int panelHz = PlatformDetector.getHardware().panelRefreshHz();
         int activeMenuCap = onBattery ? Math.max(15, config.menuFpsCap) : Math.max(30, config.acMenuFpsCap);
         int baseFps;
         if (hasActiveScreen(client)) {
@@ -103,9 +107,9 @@ public class PowerManager {
         } else {
             baseFps = client.options.framerateLimit().get();
             if (baseFps <= 0 || baseFps > 260) {
-                baseFps = 90; // Default Steam Deck OLED refresh rate
-            } else if (config.enableThermalFanGuard && baseFps > 90) {
-                baseFps = 90; // Prevent pointless >90 FPS rendering to keep fan whisper-quiet on AC & battery
+                baseFps = panelHz; // "Unlimited": use the native panel refresh rate as the reference
+            } else if (config.enableThermalFanGuard && baseFps > panelHz) {
+                baseFps = panelHz; // Prevent pointless rendering above the panel refresh rate (fan stays quiet)
             }
         }
 
@@ -144,11 +148,11 @@ public class PowerManager {
             }
         }
 
-        // 5. Thermal & Fan Noise Guard during active gameplay (caps >90 FPS to 90 Hz)
+        // 5. Thermal & Fan Noise Guard during active gameplay (caps FPS to the panel refresh: 90 Hz OLED / 60 Hz LCD)
         if (config.enableThermalFanGuard) {
             int userLimit = client.options.framerateLimit().get();
-            if (userLimit <= 0 || userLimit > 90) {
-                return 90;
+            if (userLimit <= 0 || userLimit > panelHz) {
+                return panelHz;
             }
         }
 
@@ -161,7 +165,7 @@ public class PowerManager {
      */
     public float getAfkDimAlpha() {
         ModConfig config = ModConfig.getInstance();
-        if (!config.enableAfkScreenDimming) return 0.0f;
+        if (!config.enableAfkScreenDimming || !PlatformDetector.isHandheld()) return 0.0f;
 
         boolean onBattery = BatteryReader.isOnBattery();
         long idleMs = getIdleTimeMs();
@@ -181,6 +185,7 @@ public class PowerManager {
      * Keeps the display clean without intrusive text indicators.
      */
     public void renderAfkOverlay(GuiGraphicsExtractor graphics, int width, int height) {
+        if (!PlatformDetector.isHandheld()) return;
         // Render low-battery toast if triggered recently
         long toastElapsed = System.currentTimeMillis() - lowBatteryToastTime;
         if (toastElapsed < 4500L && !lowBatteryToastText.isEmpty()) {

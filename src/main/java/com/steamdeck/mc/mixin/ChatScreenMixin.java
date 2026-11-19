@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Positions chat input at the top of the screen on Steam Deck
- * to leave lower screen area unobstructed for the virtual keyboard.
+ * to leave lower screen area unobstructed for the virtual keyboard (HANDHELD mode only).
  */
 @Mixin(ChatScreen.class)
 public abstract class ChatScreenMixin extends Screen {
@@ -31,6 +31,7 @@ public abstract class ChatScreenMixin extends Screen {
 
     @Inject(method = "init", at = @At("TAIL"))
     private void onInit(CallbackInfo ci) {
+        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) return;
         if (this.input != null) {
             this.input.setY(2);
             this.input.setHeight(12);
@@ -53,6 +54,10 @@ public abstract class ChatScreenMixin extends Screen {
             )
     )
     private void redirectChatInputBackground(GuiGraphicsExtractor graphics, int x0, int y0, int x1, int y1, int color) {
+        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
+            graphics.fill(x0, y0, x1, y1, color);
+            return;
+        }
         graphics.fill(2, 1, this.width - 2, 15, color);
     }
 
@@ -65,6 +70,7 @@ public abstract class ChatScreenMixin extends Screen {
             index = 0
     )
     private int invertScrollChat(int lines) {
-        return -lines;
+        // Chat is drawn top-down in handheld mode, so scrolling has to be inverted there only
+        return com.steamdeck.mc.platform.PlatformDetector.isHandheld() ? -lines : lines;
     }
 }
