@@ -20,6 +20,12 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.1.2
+
+* **Trackpad-Klick-Haptik:** Ein kurzer, kräftiger Impuls beim Drücken und ein leichterer beim Loslassen, jeweils auf der Seite des gedrückten Pads. Das gilt nur für native Valve-Controller, denn mit Steam Input erzeugt Steam diese Haptik selbst. Abschaltbar über `enableTrackpadClickHaptics`.
+
+---
+
 ## 🚀 Version 1.1.1
 
 ### Steam Controller (2026) & Steam Deck: korrekte SDL-Tastenbelegung

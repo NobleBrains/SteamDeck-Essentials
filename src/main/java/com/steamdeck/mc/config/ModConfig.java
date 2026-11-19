@@ -64,6 +64,7 @@ public class ModConfig {
     public float trackpadSensitivity = 1.0f; // Native trackpad camera: 1.0 = one full swipe across the pad turns ~90 degrees
     public boolean trackpadClickJump = true;
     public boolean enableHotbarHaptics = true; // Haptic rumble on trackpad per hotbar scroll
+    public boolean enableTrackpadClickHaptics = true; // Click feel on trackpad press/release (native Valve controllers, no Steam Input)
     public boolean enableRightStickRadialMenu = true; // 3-page Radial Menu on Right Joystick
     public float rightStickCameraSpeed = 180.0f; // Degrees per second at full right-stick deflection (when the radial menu is off)
 

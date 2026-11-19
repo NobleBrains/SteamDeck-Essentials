@@ -581,6 +581,12 @@ public class SteamDeckInputManager {
         boolean wasDown = prevButtonStates.getOrDefault(button, false);
         prevButtonStates.put(button, isDown);
 
+        // Physical click feel for trackpad presses (only native controllers; Steam Input does its own)
+        if ((button == DeckButton.LEFT_TRACKPAD || button == DeckButton.RIGHT_TRACKPAD) && isDown != wasDown) {
+            com.steamdeck.mc.power.HapticFeedbackManager.getInstance()
+                    .triggerTrackpadClickHaptic(button == DeckButton.RIGHT_TRACKPAD, isDown);
+        }
+
         // Virtual Keyboard Dual-Trackpad / Dual-Cursor Typing
         if (com.steamdeck.mc.gui.VirtualKeyboard.getInstance().isOpen() && isDown && !wasDown) {
             net.minecraft.client.gui.screens.Screen screen = (client.gui != null) ? client.gui.screen() : null;

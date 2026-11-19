@@ -29,6 +29,18 @@ public class HapticFeedbackManager {
     }
 
     /**
+     * Click feel for a physical trackpad press (strong, short) or release (softer), on the side of the pad.
+     * Steam Input produces this itself, so it is only used for native Valve controllers.
+     */
+    public void triggerTrackpadClickHaptic(boolean rightPad, boolean pressed) {
+        if (!ModConfig.getInstance().enableTrackpadClickHaptics) return;
+        if (!SteamDeckInputManager.getInstance().getActiveKind().isNativeValve()) return;
+        short intensity = pressed ? (short) 40000 : (short) 22000;
+        int durationMs = pressed ? 22 : 14;
+        triggerHaptic(!rightPad, rightPad, intensity, durationMs);
+    }
+
+    /**
      * Triggers haptic feedback with side selection, intensity and duration.
      */
     public void triggerHaptic(boolean leftSide, boolean rightSide, short intensity, int durationMs) {
