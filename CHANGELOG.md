@@ -20,6 +20,15 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.3.1
+
+* **Mauszeiger mit Display-Skalierung (z. B. 140 %):** Minecraft 26.3 führt die Mausposition in SDL-Fensterpunkten (`Window.getScreenWidth`). Die Mod rechnete dagegen mit Framebuffer-Pixeln (`getWidth`). Folgen: Der Trackpad-Zeiger lief unsichtbar über den Rand hinaus und blieb dort „hängen“. Slot-Springen im Inventar und die Controller-Navigation im Config-Screen landeten an falschen Stellen. Jetzt wird überall in Fensterpunkten gerechnet.
+* **Kein Zittern mehr bei ruhendem Finger:** adaptive Glättung (stark bei winzigen, langsamen Bewegungen, praktisch keine bei schnellen Wischern) und eine kleine Totzone gegen Sensorrauschen. Gilt für Trackpad-Zeiger und Trackpad-Kamera.
+* **Mausbeschleunigung** für den Trackpad-Zeiger wie im Maus-Modus von Steam: langsam heißt präzise, ein schneller Wisch kommt bis zu ca. 2 Bildschirmbreiten weit.
+* **Steam-Input-Bridge** wird automatisch abgeschaltet, sobald ein nativer Valve-Controller aktiv ist, denn die Rücktasten kommen dann direkt. Im Bridge-Tab steht der Status.
+
+---
+
 ## 🚀 Version 1.3.0
 
 ### Preset „SteamDeck Minecraft Controls“ (Workshop 3624927898), 1:1 aus Steam Input

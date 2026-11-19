@@ -476,7 +476,10 @@ public class SteamDeckConfigScreen extends Screen {
         // Header for Steam Input Bridge
         graphics.fill(x, y, x + rowW, y + 12, 0xFF161B22);
         graphics.fill(x, y + 11, x + rowW, y + 12, 0xFF00E5FF);
-        graphics.centeredText(font, "Steam Input Bridge: Rücktasten & Stick Touch", x + rowW / 2, y + 2, 0xFF00E5FF);
+        boolean bridgeActive = SteamDeckInputManager.getInstance().isSteamInputBridgeActive();
+        graphics.centeredText(font, bridgeActive ? "Steam Input Bridge: Rücktasten & Stick Touch"
+                        : "Steam Input Bridge: inaktiv (nativer Controller / Desktop – nicht nötig)",
+                x + rowW / 2, y + 2, bridgeActive ? 0xFF00E5FF : 0xFF777777);
         y += 14;
 
         // Paddles & Stick Touch in 2 columns (Left / Right)
@@ -1282,8 +1285,9 @@ public class SteamDeckConfigScreen extends Screen {
 
     private void warpCursorToGui(Minecraft client, int guiX, int guiY) {
         com.mojang.blaze3d.platform.Window win = client.getWindow();
-        float winX = (float) guiX * (float) win.getWidth() / (float) Math.max(1, win.getGuiScaledWidth());
-        float winY = (float) guiY * (float) win.getHeight() / (float) Math.max(1, win.getGuiScaledHeight());
+        // SDL window points (logical size), not framebuffer pixels - matters with display scaling
+        float winX = (float) guiX * (float) win.getScreenWidth() / (float) Math.max(1, win.getGuiScaledWidth());
+        float winY = (float) guiY * (float) win.getScreenHeight() / (float) Math.max(1, win.getGuiScaledHeight());
         org.lwjgl.sdl.SDLMouse.SDL_WarpMouseInWindow(win.handle(), winX, winY);
         client.mouseHandler.onMove(win.handle(), winX, winY, 0.0, 0.0);
     }

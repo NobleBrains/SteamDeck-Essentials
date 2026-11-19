@@ -118,6 +118,16 @@ public class SteamDeckInputManager {
         return activeGamepadHandle != 0 || activeJoystickHandle != 0;
     }
 
+    /**
+     * The Steam Input bridge (paddles/stick touch arriving as keyboard keys) is only needed while Steam
+     * Input translates the controller. A native Valve controller delivers those buttons directly, and on
+     * a desktop the bridge would swallow real keyboard keys ('/', '[', ...).
+     */
+    public boolean isSteamInputBridgeActive() {
+        if (activeKind.isNativeValve()) return false;
+        return com.steamdeck.mc.platform.PlatformDetector.isHandheld() || ModConfig.getInstance().steamInputBridgeOnDesktop;
+    }
+
     /** True while the player actually uses a controller (always on handhelds with a built-in pad). */
     public boolean isControllerRecentlyUsed() {
         if (!hasController()) return false;
@@ -494,6 +504,9 @@ public class SteamDeckInputManager {
         // 5. Bumpers & Back Pedals
         processButton(DeckButton.LB, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_SHOULDER), client, set);
         processButton(DeckButton.RB, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER), client, set);
+        if (!isSteamInputBridgeActive()) {
+            bridgeL4Down = bridgeR4Down = bridgeL5Down = bridgeR5Down = bridgeL3TouchDown = bridgeR3TouchDown = false;
+        }
         processButton(DeckButton.L4, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_PADDLE1) || bridgeL4Down, client, set);
         processButton(DeckButton.R4, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1) || bridgeR4Down, client, set);
         processButton(DeckButton.L5, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_LEFT_PADDLE2) || bridgeL5Down, client, set);
@@ -724,8 +737,8 @@ public class SteamDeckInputManager {
             Screen screen = client.gui.screen();
             com.mojang.blaze3d.platform.Window win = client.getWindow();
             if (screen == null || win == null) return;
-            double mx = client.mouseHandler.xpos() * win.getGuiScaledWidth() / (double) Math.max(1, win.getWidth());
-            double my = client.mouseHandler.ypos() * win.getGuiScaledHeight() / (double) Math.max(1, win.getHeight());
+            double mx = client.mouseHandler.xpos() * win.getGuiScaledWidth() / (double) Math.max(1, win.getScreenWidth());
+            double my = client.mouseHandler.ypos() * win.getGuiScaledHeight() / (double) Math.max(1, win.getScreenHeight());
             screen.mouseScrolled(mx, my, 0.0, direction);
         } else {
             // Like the mouse wheel in vanilla: wheel up = previous hotbar slot
@@ -837,9 +850,9 @@ public class SteamDeckInputManager {
                         if (!(screen instanceof AbstractContainerScreen) && !(screen instanceof SteamDeckConfigScreen)
                                 && screen != null && screen.getFocused() != null) {
                             double mx = client.mouseHandler.xpos() * (double) client.getWindow().getGuiScaledWidth()
-                                    / (double) Math.max(1, client.getWindow().getWidth());
+                                    / (double) Math.max(1, client.getWindow().getScreenWidth());
                             double my = client.mouseHandler.ypos() * (double) client.getWindow().getGuiScaledHeight()
-                                    / (double) Math.max(1, client.getWindow().getHeight());
+                                    / (double) Math.max(1, client.getWindow().getScreenHeight());
                             boolean mouseHoveringWidget = client.getLastInputType().isMouse() && screen.getChildAt(mx, my).isPresent();
                             if (!mouseHoveringWidget) {
                                 if (isDown) {
@@ -1002,8 +1015,8 @@ public class SteamDeckInputManager {
         int topPos = acc.getTopPos();
 
         com.mojang.blaze3d.platform.Window win = client.getWindow();
-        double curGuiX = client.mouseHandler.xpos() * (double) win.getGuiScaledWidth() / (double) Math.max(1, win.getWidth());
-        double curGuiY = client.mouseHandler.ypos() * (double) win.getGuiScaledHeight() / (double) Math.max(1, win.getHeight());
+        double curGuiX = client.mouseHandler.xpos() * (double) win.getGuiScaledWidth() / (double) Math.max(1, win.getScreenWidth());
+        double curGuiY = client.mouseHandler.ypos() * (double) win.getGuiScaledHeight() / (double) Math.max(1, win.getScreenHeight());
 
         Slot currentSlot = acc.getHoveredSlot();
         if (currentSlot != null) {
@@ -1047,8 +1060,8 @@ public class SteamDeckInputManager {
         if (bestSlot != null) {
             int targetGuiX = leftPos + bestSlot.x + 8;
             int targetGuiY = topPos + bestSlot.y + 8;
-            float winX = (float) targetGuiX * (float) win.getWidth() / (float) Math.max(1, win.getGuiScaledWidth());
-            float winY = (float) targetGuiY * (float) win.getHeight() / (float) Math.max(1, win.getGuiScaledHeight());
+            float winX = (float) targetGuiX * (float) win.getScreenWidth() / (float) Math.max(1, win.getGuiScaledWidth());
+            float winY = (float) targetGuiY * (float) win.getScreenHeight() / (float) Math.max(1, win.getGuiScaledHeight());
             SDLMouse.SDL_WarpMouseInWindow(win.handle(), winX, winY);
             client.mouseHandler.onMove(win.handle(), winX, winY, 0.0, 0.0);
             acc.setHoveredSlot(bestSlot);
@@ -1122,13 +1135,20 @@ public class SteamDeckInputManager {
      *  because the HUD (camera) keeps rendering underneath open screens. */
     private static final class TrackpadTracker {
         boolean wasDown = false;
-        float lastX;
+        float lastX;       // filtered position of the previous call
         float lastY;
+        float filtX;       // low-pass filtered finger position
+        float filtY;
+        long lastNanos;
+        float lastDt;      // seconds since the previous delta (for acceleration)
 
         void reset() {
             wasDown = false;
         }
     }
+
+    /** Movement below this (pad widths per update) is sensor noise of a resting finger. */
+    private static final float TRACKPAD_JITTER = 0.0025f;
 
     // Live pressure per pad (0..1, -1 = no finger) and pressure-click state with hysteresis
     private final float[] padPressure = {-1.0f, -1.0f};
@@ -1238,14 +1258,32 @@ public class SteamDeckInputManager {
 
         float x = touchX.get(0);
         float y = touchY.get(0);
-        float[] result = null;
-        if (tracker.wasDown && (x != tracker.lastX || y != tracker.lastY)) {
-            result = new float[]{x - tracker.lastX, y - tracker.lastY};
+        long now = System.nanoTime();
+        if (!tracker.wasDown) {
+            tracker.filtX = tracker.lastX = x;
+            tracker.filtY = tracker.lastY = y;
+            tracker.lastNanos = now;
+            tracker.wasDown = true;
+            return null;
         }
-        tracker.lastX = x;
-        tracker.lastY = y;
-        tracker.wasDown = true;
-        return result;
+
+        // Adaptive low-pass (like Steam's smoothing): heavy filtering for tiny, slow motion
+        // (kills the jitter of a resting finger), almost none for fast swipes (no lag).
+        float rawDist = (float) Math.hypot(x - tracker.filtX, y - tracker.filtY);
+        float alpha = Math.min(1.0f, 0.25f + rawDist * 40.0f);
+        tracker.filtX += (x - tracker.filtX) * alpha;
+        tracker.filtY += (y - tracker.filtY) * alpha;
+
+        float dx = tracker.filtX - tracker.lastX;
+        float dy = tracker.filtY - tracker.lastY;
+        if (Math.hypot(dx, dy) < TRACKPAD_JITTER) {
+            return null; // keep lastX/Y, so slow deliberate motion still accumulates past the threshold
+        }
+        tracker.lastDt = Math.max(0.001f, Math.min(0.1f, (now - tracker.lastNanos) / 1_000_000_000.0f));
+        tracker.lastNanos = now;
+        tracker.lastX = tracker.filtX;
+        tracker.lastY = tracker.filtY;
+        return new float[]{dx, dy};
     }
 
     /**
@@ -1272,10 +1310,16 @@ public class SteamDeckInputManager {
         if (d == null) return;
 
         markControllerActivity();
-        // One full swipe across the pad moves the cursor ~80 % of the window width (scaled by sensitivity)
-        double scale = win.getWidth() * 0.8 * config.trackpadSensitivity;
-        cursorX = Math.max(0, Math.min(win.getWidth() - 1, cursorX + d[0] * scale));
-        cursorY = Math.max(0, Math.min(win.getHeight() - 1, cursorY + d[1] * scale));
+        // Mouse coordinates are SDL window points (getScreenWidth), NOT framebuffer pixels (getWidth):
+        // with display scaling (e.g. 1.4) the old pixel bounds let the cursor run far past the edge.
+        int w = Math.max(1, win.getScreenWidth());
+        int h = Math.max(1, win.getScreenHeight());
+        // Pointer acceleration like Steam's mouse mode: slow = precise, fast swipe = far
+        float speed = (float) Math.hypot(d[0], d[1]) / cursorPad.lastDt; // pad widths per second
+        double accel = 0.6 + Math.min(1.4, speed * 0.7);
+        double scale = w * config.trackpadSensitivity * accel;
+        cursorX = Math.max(0, Math.min(w - 1, cursorX + d[0] * scale));
+        cursorY = Math.max(0, Math.min(h - 1, cursorY + d[1] * scale));
 
         SDLMouse.SDL_WarpMouseInWindow(win.handle(), (float) cursorX, (float) cursorY);
         client.mouseHandler.onMove(win.handle(), cursorX, cursorY, 0.0, 0.0);

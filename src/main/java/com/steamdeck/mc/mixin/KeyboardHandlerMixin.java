@@ -18,8 +18,7 @@ public class KeyboardHandlerMixin {
     private void onKeyPress(long window, int action, KeyEvent event, CallbackInfo ci) {
         // The bridge swallows '[', ']', '\\', '/', F13, F14. On a desktop with a real keyboard that would
         // e.g. break '/' for commands, so it is only active in handheld mode unless explicitly enabled.
-        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()
-                && !com.steamdeck.mc.config.ModConfig.getInstance().steamInputBridgeOnDesktop) {
+        if (!SteamDeckInputManager.getInstance().isSteamInputBridgeActive()) {
             return;
         }
         if (SteamDeckInputManager.getInstance().handleBridgeKeyEvent(event.key(), action)) {
