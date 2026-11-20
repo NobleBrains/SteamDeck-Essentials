@@ -170,6 +170,7 @@ public class SteamDeckInputManager {
                     return;
                 }
                 SteamDeckEssentials.LOGGER.info("[INPUT] Switching to preferred controller (ID {})", best[0]);
+                releaseAllButtons();
                 SDLGamepad.SDL_CloseGamepad(activeGamepadHandle);
                 activeGamepadHandle = 0;
                 activeGamepadId = -1;
@@ -178,6 +179,7 @@ public class SteamDeckInputManager {
                 com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().clearDevice();
             } else {
                 SteamDeckEssentials.LOGGER.info("[INPUT] SDL Gamepad disconnected: ID {}", activeGamepadId);
+                releaseAllButtons();
                 SDLGamepad.SDL_CloseGamepad(activeGamepadHandle);
                 activeGamepadHandle = 0;
                 activeGamepadId = -1;
@@ -192,6 +194,7 @@ public class SteamDeckInputManager {
                 return;
             } else {
                 SteamDeckEssentials.LOGGER.info("[INPUT] SDL Joystick disconnected: ID {}", activeJoystickId);
+                releaseAllButtons();
                 SDLJoystick.SDL_CloseJoystick(activeJoystickHandle);
                 activeJoystickHandle = 0;
                 activeJoystickId = -1;
@@ -629,6 +632,48 @@ public class SteamDeckInputManager {
         processButton(DeckButton.RIGHT_STICK_TOUCH, bridgeR3TouchDown, client, set);
     }
 
+    /** True while {@link #releaseAllButtons()} runs: no haptics for a controller that is going away. */
+    private boolean releasingAll = false;
+
+    /**
+     * Releases every button that is still held (controller disconnected or replaced by a preferred one).
+     * Without this, bindings held at that moment (e.g. RT = attack, A = jump, custom keys) stayed pressed
+     * forever, because the release edge was never seen.
+     */
+    private void releaseAllButtons() {
+        Minecraft client = Minecraft.getInstance();
+        releasingAll = true;
+        try {
+            for (DeckButton b : DeckButton.values()) {
+                if (Boolean.TRUE.equals(prevButtonStates.get(b))) {
+                    if (client != null) {
+                        processButton(b, false, client, currentActionSet);
+                    } else {
+                        prevButtonStates.put(b, false);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            SteamDeckEssentials.LOGGER.warn("[INPUT] Failed to release held buttons", t);
+            for (DeckButton b : DeckButton.values()) prevButtonStates.put(b, false);
+        } finally {
+            releasingAll = false;
+        }
+        repeatState.clear();
+        activeHotbarDirection = 0;
+        activeDpadNavButton = null;
+        menuShiftHeld = false;
+        isZooming = false;
+        leftPadDpadWasDown = false;
+        padPressureClick[0] = padPressureClick[1] = false;
+        padPressure[0] = padPressure[1] = -1.0f;
+        cameraPad.reset();
+        cursorPad.reset();
+        if (client != null && client.options != null) {
+            stickMapper.resetKeys(client.options);
+        }
+    }
+
     private void processButton(DeckButton button, boolean isDown, Minecraft client, ActionSet set) {
         if (isDown) {
             markControllerActivity();
@@ -638,7 +683,8 @@ public class SteamDeckInputManager {
         prevButtonStates.put(button, isDown);
 
         // Physical click feel for trackpad presses (only native controllers; Steam Input does its own)
-        if ((button == DeckButton.LEFT_TRACKPAD || button == DeckButton.RIGHT_TRACKPAD) && isDown != wasDown) {
+        if ((button == DeckButton.LEFT_TRACKPAD || button == DeckButton.RIGHT_TRACKPAD) && isDown != wasDown
+                && !releasingAll) {
             com.steamdeck.mc.power.HapticFeedbackManager.getInstance()
                     .triggerTrackpadClickHaptic(button == DeckButton.RIGHT_TRACKPAD, isDown);
         }

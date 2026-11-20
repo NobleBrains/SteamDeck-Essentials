@@ -43,9 +43,14 @@ public class SteamLayoutInstaller {
     }
 
     /**
-     * Installs or updates the VDF template across all detected Steam directories and user shortcut configs.
+     * Installs or updates the VDF template in all detected Steam directories.
+     *
+     * @param includeAppConfigs also write the layout as the active per-app config for Prism Launcher /
+     *        Minecraft ({@code Steam Controller Configs/<user>/config/<app>/controller_neptune.vdf}).
+     *        That replaces the user's own layout for these apps, so it is only done on an explicit
+     *        request (button in the Bridge tab), never by the automatic install at game start.
      */
-    public static synchronized boolean installLayout() {
+    public static synchronized boolean installLayout(boolean includeAppConfigs) {
         try (InputStream in = SteamLayoutInstaller.class.getResourceAsStream(RESOURCE_PATH)) {
             if (in == null) {
                 lastStatusMessage = "Fehler: VDF-Ressource nicht in Mod-JAR gefunden!";
@@ -69,6 +74,8 @@ public class SteamLayoutInstaller {
                     Path targetTemplate = templatesDir.resolve(TEMPLATE_FILENAME);
                     writeIfChanged(targetTemplate, vdfBytes, false);
                     installedCount++;
+
+                    if (!includeAppConfigs) continue;
 
                     // Also configure user shortcut directories (Prism Launcher / Minecraft)
                     Path controllerConfigsRoot = steamDir.resolve("steamapps/common/Steam Controller Configs");
@@ -111,8 +118,10 @@ public class SteamLayoutInstaller {
     }
 
     /**
-     * Writes the file only if its content differs. With {@code backup}, an existing file that is
-     * not ours is copied to {@code <name>.bak-steamdeck-essentials} once before it is replaced.
+     * Writes the file only if its content differs. With {@code backup}, an existing file that is not
+     * ours (an older version of our own layout does not count) is backed up every time before it is
+     * replaced: first to {@code <name>.bak-steamdeck-essentials}, later backups get a timestamp so
+     * an earlier backup is never overwritten.
      */
     private static void writeIfChanged(Path target, byte[] content, boolean backup) throws java.io.IOException {
         if (Files.exists(target)) {
@@ -120,15 +129,24 @@ public class SteamLayoutInstaller {
             if (java.util.Arrays.equals(existing, content)) {
                 return;
             }
-            if (backup) {
+            if (backup && !isOwnLayout(existing)) {
                 Path bak = target.resolveSibling(target.getFileName() + ".bak-steamdeck-essentials");
-                if (!Files.exists(bak)) {
-                    Files.copy(target, bak);
-                    SteamDeckEssentials.LOGGER.info("[INPUT] Backed up existing Steam layout to {}", bak);
+                if (Files.exists(bak)) {
+                    bak = target.resolveSibling(target.getFileName() + ".bak-steamdeck-essentials-"
+                            + (System.currentTimeMillis() / 1000L));
                 }
+                Files.copy(target, bak);
+                SteamDeckEssentials.LOGGER.info("[INPUT] Backed up existing Steam layout to {}", bak);
             }
         }
         Files.write(target, content);
+    }
+
+    /** Our bundled template carries this title; files with it were written by the mod. */
+    private static final String OWN_TITLE = "\"SteamDeck Essentials (Minecraft)\"";
+
+    private static boolean isOwnLayout(byte[] vdf) {
+        return new String(vdf, java.nio.charset.StandardCharsets.UTF_8).contains(OWN_TITLE);
     }
 
     private static List<Path> findSteamDirectories() {

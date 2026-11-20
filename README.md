@@ -69,7 +69,8 @@ Die Mod läuft in einem von zwei Modi:
   * **Ebene 3 (`🔧 F3+ Utilities`):** `F3+G` (Chunk-Grid), `F3+B` (Hitboxen), `F3+H` (Tooltips), `F3+A`, `F3+N`, `F3+D`, `F3+C`, `F3+T`.
 * **Steam Input Hardware-Bridge & 1-Klick-Layout-Installer:**
   * Volle Unterstützung für alle 4 Rücktasten (**L4, R4, L5, R5**), beide **Trackpad-Klicks** und kapazitive **Stick-Touch-Sensoren** (`L-Stick Touch`, `R-Stick Touch`).
-  * Automatische Installation der mitgelieferten `controller_neptune_steamdeck_essentials.vdf` beim Spielstart sowie per 1-Klick-Button im Tab `⚙️ Bridge`.
+  * Beim Spielstart wird die mitgelieferte `controller_neptune_steamdeck_essentials.vdf` nur als **Vorlage** installiert (in Steam unter „Vorlagen“ wählbar). Eigene Layouts bleiben unangetastet.
+  * Der 1-Klick-Button im Tab `⚙️ Bridge` setzt das Layout zusätzlich als aktives Layout für Prism Launcher / Minecraft. Ein vorhandenes eigenes Layout wird vorher gesichert (`controller_neptune.vdf.bak-steamdeck-essentials`, weitere Sicherungen mit Zeitstempel).
 * **Direktionale LRA-Haptik & Gameplay-Haptik:**
   * Seitengetrennte Haptik-Impulse beim Hotbar-Scrollen (inkl. Auto-Repeat beim Halten), beim Bogen-/Armbrust-Spannen und bei niedriger Werkzeug-Haltbarkeit (< 10 %).
 

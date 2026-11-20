@@ -78,7 +78,7 @@ public class SteamDeckEssentials implements ClientModInitializer {
         SuspendHook.getInstance().syncWithMode();
         // Steam Input template is only auto-installed on handhelds (never silently on a desktop PC)
         if (PlatformDetector.isHandheld() && !com.steamdeck.mc.input.SteamLayoutInstaller.isLayoutInstalled()) {
-            com.steamdeck.mc.input.SteamLayoutInstaller.installLayout();
+            com.steamdeck.mc.input.SteamLayoutInstaller.installLayout(false);
         }
 
         // 4. Client Tick Event (Input, Key presses, Telemetry)

@@ -1190,7 +1190,7 @@ public class SteamDeckConfigScreen extends Screen {
                 y += 2;
                 // 1-Click Steam Input Layout Installer click
                 if (mouseX >= x && mouseX <= x + rowW && mouseY >= y && mouseY <= y + 16) {
-                    com.steamdeck.mc.input.SteamLayoutInstaller.installLayout();
+                    com.steamdeck.mc.input.SteamLayoutInstaller.installLayout(true);
                     this.layoutInstallStatus = com.steamdeck.mc.input.SteamLayoutInstaller.getLastStatusMessage();
                     this.layoutInstallStatusTime = System.currentTimeMillis();
                     VirtualKeyboard.playClickSound();

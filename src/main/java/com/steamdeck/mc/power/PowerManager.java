@@ -132,16 +132,22 @@ public class PowerManager {
         if (onBattery && config.enableLowBatterySaver) {
             BatteryInfo info = BatteryReader.getBatteryInfo();
             if (info.isAvailable() && info.percent() > 0 && info.percent() <= 20) {
+                // Never raise the frame rate: a lower limit set by the player always wins
+                int ecoCap = info.percent() <= 10 ? 45 : 60;
+                int userLimit = client.options.framerateLimit().get();
+                if (userLimit > 0 && userLimit <= 260) {
+                    ecoCap = Math.min(ecoCap, userLimit);
+                }
                 if (info.percent() <= 10 && !lowBatteryToastShown10) {
                     lowBatteryToastShown10 = true;
                     lowBatteryToastTime = System.currentTimeMillis();
-                    lowBatteryToastText = "🪫 Kritischer Akku (" + info.percent() + "%) • Eco-Cap (45 FPS) aktiv";
+                    lowBatteryToastText = "🪫 Kritischer Akku (" + info.percent() + "%) • Eco-Cap (" + ecoCap + " FPS) aktiv";
                 } else if (info.percent() <= 20 && !lowBatteryToastShown20) {
                     lowBatteryToastShown20 = true;
                     lowBatteryToastTime = System.currentTimeMillis();
-                    lowBatteryToastText = "🪫 Akku niedrig (" + info.percent() + "%) • Eco-Cap (60 FPS) aktiv";
+                    lowBatteryToastText = "🪫 Akku niedrig (" + info.percent() + "%) • Eco-Cap (" + ecoCap + " FPS) aktiv";
                 }
-                return info.percent() <= 10 ? 45 : 60;
+                return ecoCap;
             } else if (info.percent() > 25) {
                 lowBatteryToastShown20 = false;
                 lowBatteryToastShown10 = false;

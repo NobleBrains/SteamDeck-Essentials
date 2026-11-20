@@ -20,6 +20,15 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.4.2
+
+Bugfixes:
+* **Keine hängenden Tasten mehr beim Trennen des Controllers.** Wenn der Controller beim Trennen gerade eine Taste hielt, wurde sie nie losgelassen. Das galt auch beim automatischen Wechsel auf einen bevorzugten Controller. Beispiel: Der Steam Controller 2026 verliert per BLE kurz die Verbindung, während RT gedrückt ist. Dann baute die Figur endlos weiter ab, und Springen, Sprinten oder eigene Tasten blieben genauso hängen. Jetzt werden beim Trennen bzw. Wechsel alle gehaltenen Tasten sauber losgelassen. Hold-Repeat, Hotbar-Scroll, Zoom, Shift im Inventar und Trackpad-Zustände werden dabei zurückgesetzt.
+* **Low-Battery-Saver erhöht die FPS nicht mehr.** Unter 20 % bzw. 10 % Akku galt bisher fest 60 bzw. 45 FPS, auch wenn der Spieler ein niedrigeres Limit (z. B. 30 oder 40 FPS) eingestellt hatte. Jetzt gilt das niedrigere der beiden Limits. Der Hinweis-Toast zeigt den tatsächlichen Wert.
+* **Der Steam-Layout-Installer überschreibt keine eigenen Layouts mehr automatisch.** Beim Spielstart wird nur noch die Vorlage in `controller_base/templates` installiert. Das aktive Layout für Prism Launcher / Minecraft (`Steam Controller Configs/<user>/config/<app>/controller_neptune.vdf`) wird nur noch über den Button im Tab `⚙️ Bridge` gesetzt. Fremde Layouts werden dabei jedes Mal gesichert, frühere Sicherungen werden nicht überschrieben (Zeitstempel im Namen). Ältere Versionen des eigenen Layouts werden ohne Sicherung ersetzt.
+
+---
+
 ## 🚀 Version 1.4.1
 
 Standardwerte und Verhalten nach den Steam-Input-Fakten aus [`docs/FINDINGS.md`](docs/FINDINGS.md):
