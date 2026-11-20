@@ -22,6 +22,12 @@ public class HudMixin {
         com.steamdeck.mc.input.SteamDeckInputManager.getInstance().pollCameraFrame(Minecraft.getInstance());
         GyroManager.getInstance().update(Minecraft.getInstance());
         RadialMenuOverlay.getInstance().render(graphics, graphics.guiWidth(), graphics.guiHeight());
+        com.steamdeck.mc.gui.TrackpadGridOverlay.render(graphics, graphics.guiWidth(), graphics.guiHeight());
         PowerManager.getInstance().renderAfkOverlay(graphics, graphics.guiWidth(), graphics.guiHeight());
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.gui == null || mc.gui.screen() == null) {
+            // With a screen open the popup is drawn by the screen overlay hook (on top of the screen)
+            com.steamdeck.mc.gui.ControllerToast.getInstance().render(graphics, graphics.guiWidth(), graphics.guiHeight());
+        }
     }
 }

@@ -41,6 +41,8 @@ public class ModConfig {
     public boolean enableBatteryHudInPause = true;
     public boolean enableBatteryHudInF3 = true;
     public boolean enableAutoSuspendSave = true;
+    /** Popup when a controller connects / disconnects / runs low on battery (like Steam). */
+    public boolean showControllerToasts = true;
 
     // Dynamic AFK & Eco throttling
     public boolean enableDynamicAfkThrottle = true;
@@ -115,6 +117,8 @@ public class ModConfig {
     public float gyroSensitivityY = 1.0f;
     public boolean invertGyroX = false;
     public boolean invertGyroY = false;
+    /** Fixes the mirrored left/right gyro of the Steam Controller 2026 under SDL (on by default). */
+    public boolean tritonGyroYawCorrection = true;
     public boolean aimItemsOnly = true; // legacy, see gyroActivation
     // When the gyro turns the camera: "AIM_ONLY" (drawing bow/crossbow/trident/spyglass), "ALWAYS",
     // "TRACKPAD_TOUCH" (finger on either trackpad), "RIGHT_STICK_TOUCH" (capacitive right stick)
@@ -275,6 +279,7 @@ public class ModConfig {
                 case START -> DeckAction.PAUSE;
                 case SELECT -> DeckAction.INVENTORY;
                 case LEFT_STICK_TOUCH, RIGHT_STICK_TOUCH -> DeckAction.NONE;
+                default -> DeckAction.NONE;
             };
         } else {
             // IN_GAME (Default)
@@ -301,6 +306,8 @@ public class ModConfig {
                 case START -> DeckAction.PAUSE;
                 case SELECT -> DeckAction.INVENTORY;
                 case LEFT_STICK_TOUCH, RIGHT_STICK_TOUCH -> DeckAction.NONE;
+                // 3x3 grid on the left trackpad: hotbar slots 1-9
+                default -> button.gridIndex() >= 0 ? DeckAction.hotbarSlot(button.gridIndex()) : DeckAction.NONE;
             };
         }
     }
@@ -328,7 +335,9 @@ public class ModConfig {
         this.trackpadClickMode = null;
         if (!"PRESSURE".equals(this.leftTrackpadClickMode)) this.leftTrackpadClickMode = "HARDWARE";
         if (!"PRESSURE".equals(this.rightTrackpadClickMode)) this.rightTrackpadClickMode = "HARDWARE";
-        if (!"DPAD_MOVE".equals(this.leftTrackpadMode)) this.leftTrackpadMode = "BUTTON";
+        if (!"DPAD_MOVE".equals(this.leftTrackpadMode) && !"GRID_3X3".equals(this.leftTrackpadMode)) {
+            this.leftTrackpadMode = "BUTTON";
+        }
         if (!java.util.Set.of("AIM_ONLY", "ALWAYS", "TRACKPAD_TOUCH", "RIGHT_STICK_TOUCH").contains(this.gyroActivation)) {
             this.gyroActivation = "AIM_ONLY";
         }

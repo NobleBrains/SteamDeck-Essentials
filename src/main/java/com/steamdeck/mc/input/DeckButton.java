@@ -28,7 +28,32 @@ public enum DeckButton {
     START("Start (Menü)"),
     SELECT("Select (Ansicht)"),
     LEFT_STICK_TOUCH("L-Stick Touch"),
-    RIGHT_STICK_TOUCH("R-Stick Touch");
+    RIGHT_STICK_TOUCH("R-Stick Touch"),
+    // Virtual buttons: left trackpad split into a 3x3 grid (mode "GRID_3X3"), row by row from top left
+    LPAD_GRID_1("Raster 1 (oben links)"),
+    LPAD_GRID_2("Raster 2 (oben)"),
+    LPAD_GRID_3("Raster 3 (oben rechts)"),
+    LPAD_GRID_4("Raster 4 (links)"),
+    LPAD_GRID_5("Raster 5 (Mitte)"),
+    LPAD_GRID_6("Raster 6 (rechts)"),
+    LPAD_GRID_7("Raster 7 (unten links)"),
+    LPAD_GRID_8("Raster 8 (unten)"),
+    LPAD_GRID_9("Raster 9 (unten rechts)");
+
+    private static final DeckButton[] GRID = {
+            LPAD_GRID_1, LPAD_GRID_2, LPAD_GRID_3, LPAD_GRID_4, LPAD_GRID_5,
+            LPAD_GRID_6, LPAD_GRID_7, LPAD_GRID_8, LPAD_GRID_9
+    };
+
+    /** Grid cell 0..8 (row-major from the top left). */
+    public static DeckButton gridCell(int index) {
+        return GRID[index];
+    }
+
+    /** 0..8 for a grid cell, -1 for every other button. */
+    public int gridIndex() {
+        return ordinal() >= LPAD_GRID_1.ordinal() ? ordinal() - LPAD_GRID_1.ordinal() : -1;
+    }
 
     private final String displayName;
 

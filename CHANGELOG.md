@@ -20,6 +20,31 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.5.0
+
+### Neu
+* **Controller-Konfigurator im Stil von Steam Input** (`gui/ControllerLayoutScreen`, `gui/ControllerArt`). Er ersetzt im Pausemenü und in ModMenu den bisherigen Screen, der als „Weitere Einstellungen“ erreichbar bleibt.
+  * Eigene Strichzeichnung von Steam Deck und Steam Controller, ohne Valve-Assets. Die fokussierte Taste wird hervorgehoben, gedrückte Tasten leuchten live.
+  * Action-Sets per L1/R1, Auswahlliste mit den Tasten, die eine Aktion im aktuellen Set schon belegen, Haptik und Wiederholen pro Taste, Tastatur-Tasten per Tastendruck oder Preset.
+  * Physische Taste drücken springt zu ihrer Zeile.
+  * Controller-Eingaben gehen direkt an den Screen und nicht über das Set „Menüs“, damit man sich nicht aussperren kann.
+  * Modus-Zeilen (global) für rechten Stick, Gyro und Trackpads.
+  * Das Layout ist für eine Fläche von 600×290 entworfen und wird auf die Fenstergröße skaliert.
+* **Linkes Trackpad als Raster 3×3** (`leftTrackpadMode: "GRID_3X3"`): neun virtuelle Tasten `LPAD_GRID_1..9`, die pro Action-Set belegt werden. Im Spiel ist der Standard Hotbar-Slot 1–9 (neue Aktionen `HOTBAR_SLOT_1..9`).
+  * Die Feldgrenzen haben eine Hysterese von 4 %, damit nichts flackert.
+  * Beim Feldwechsel gibt es einen Haptik-Tick. Das Feld zählt ab dem Moment des Klicks.
+  * Ein HUD-Overlay (`gui/TrackpadGridOverlay`) zeigt das Raster mit Item-Icons.
+  * Raster-Editor im Konfigurator. Das Workshop-Preset lässt das Raster unverändert.
+* **Controller-Hinweis** (`gui/ControllerToast`) beim Verbinden und Trennen, mit Typ und Akkustand, sowie eine Warnung bei schwachem Controller-Akku. Abschaltbar über `showControllerToasts`. Der eingebaute Controller des Handhelds wird beim Start nicht angekündigt.
+
+### Bugfixes
+* **Spiel fiel nach 1 Minute auf 30 FPS und nach 10 Minuten auf 10 FPS**, wenn nur mit dem Controller gespielt wurde. Vanillas „Inaktivitäts-FPS: AFK“ zählt nur Tastatur und Maus als Eingabe. Controller-Eingaben melden sich jetzt bei `FramerateLimitTracker.onInputReceived()`.
+* **Trackpad-Filter:** Bisher wurden Frames ohne neues Pad-Sample als „Geschwindigkeit 0“ gewertet und der folgende Frame als doppelt so schnell. Das machte Glättung und Zeigerbeschleunigung unruhig. Jetzt wird nur bei echten neuen Samples gerechnet, mit der vollen Zeit seit dem letzten Sample.
+* **Menü-FPS-Cap:** Solange ein Finger auf dem rechten Trackpad liegt (Mauszeiger), gelten mindestens 60 FPS, auch im Akkubetrieb.
+* **Gyro links/rechts gespiegelt beim Steam Controller 2026** (SDL-Treiber). Gier- und Rollachse werden für diesen Controller umgedreht. Abschaltbar über `tritonGyroYawCorrection`.
+
+---
+
 ## 🚀 Version 1.4.2
 
 Bugfixes:

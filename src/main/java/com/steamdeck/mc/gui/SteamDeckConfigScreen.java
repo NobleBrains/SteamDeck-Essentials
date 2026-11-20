@@ -293,6 +293,8 @@ public class SteamDeckConfigScreen extends Screen {
         y += rowH + 3;
         renderToggleOption(graphics, font, x, y, rowW, rowH, "Trackpad-Kamera ohne Steam (nativ)", config.nativeTrackpadCamera, mouseX, mouseY);
         y += rowH + 3;
+        renderToggleOption(graphics, font, x, y, rowW, rowH, "Controller-Hinweis (Verbinden, Trennen, Akku)", config.showControllerToasts, mouseX, mouseY);
+        y += rowH + 3;
 
         if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
             // Dim the handheld-only power options (AFK, dimming, chunk threads, thermal cap)
@@ -354,7 +356,11 @@ public class SteamDeckConfigScreen extends Screen {
                 com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerPadHaptic(true, true, (short) 38000, 30);
             }
             case 8 -> c.enableTrackpadClickHaptics = !c.enableTrackpadClickHaptics;
-            case 9 -> c.leftTrackpadMode = "DPAD_MOVE".equals(c.leftTrackpadMode) ? "BUTTON" : "DPAD_MOVE";
+            case 9 -> c.leftTrackpadMode = switch (c.leftTrackpadMode) {
+                case "BUTTON" -> "DPAD_MOVE";
+                case "DPAD_MOVE" -> "GRID_3X3";
+                default -> "BUTTON";
+            };
             case 10 -> c.sprintOnForward = !c.sprintOnForward;
             default -> {
                 return false;
@@ -413,7 +419,8 @@ public class SteamDeckConfigScreen extends Screen {
         renderToggleOption(graphics, font, x, y, rowW, PAD_ROW_H, "Klick-Haptik (Drücken & Loslassen)", c.enableTrackpadClickHaptics, mouseX, mouseY);
         y += PAD_STEP;
         renderPadModeRow(graphics, font, x, y, rowW, 9, "Linkes Pad: "
-                + ("DPAD_MOVE".equals(c.leftTrackpadMode) ? "D-Pad zum Laufen (mit Klick)" : "Taste (Trackpad L)"), mouseX, mouseY);
+                + ("DPAD_MOVE".equals(c.leftTrackpadMode) ? "D-Pad zum Laufen (mit Klick)"
+                        : ("GRID_3X3".equals(c.leftTrackpadMode) ? "Raster 3×3 (9 Felder)" : "Taste (Trackpad L)")), mouseX, mouseY);
         y += PAD_STEP;
         renderToggleOption(graphics, font, x, y, rowW, PAD_ROW_H, "Vorwärts = Sprinten (Stick & Pad)", c.sprintOnForward, mouseX, mouseY);
         y += PAD_STEP;
@@ -912,6 +919,7 @@ public class SteamDeckConfigScreen extends Screen {
                 cfg.enablePerformanceTracking = true;
                 cfg.enableF3ControllerDebug = true;
                 cfg.nativeTrackpadCamera = true;
+                cfg.showControllerToasts = true;
                 cfg.save();
                 VirtualKeyboard.playClickSound();
             } else if (this.currentTab == 5) {
@@ -1086,6 +1094,13 @@ public class SteamDeckConfigScreen extends Screen {
                     VirtualKeyboard.playClickSound();
                     return true;
                 }
+                y += rowH + 3;
+                if (mouseY >= y && mouseY <= y + rowH) {
+                    config.showControllerToasts = !config.showControllerToasts;
+                    config.save();
+                    VirtualKeyboard.playClickSound();
+                    return true;
+                }
             }
         } else {
             // Tab 4: Hardware & Steam Input Bridge
@@ -1251,7 +1266,7 @@ public class SteamDeckConfigScreen extends Screen {
         }
 
         int maxRows = (this.currentTab < 3) ? LEFT_COLUMN_BUTTONS.length
-                : (this.currentTab == 3 ? 9 : (this.currentTab == 5 ? TRACKPAD_ROWS : 7));
+                : (this.currentTab == 3 ? 10 : (this.currentTab == 5 ? TRACKPAD_ROWS : 7));
         int maxCols = (this.currentTab < 3) ? 1 : 0;
 
         if (this.navRow == -1) {

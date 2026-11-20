@@ -65,6 +65,15 @@ public class SDL2GyroProvider implements GyroProvider {
                 sensorBuffer.clear();
                 // Read the sensor that was actually enabled (previously always SDL_SENSOR_GYRO was read)
                 if (SDLGamepad.SDL_GetGamepadSensorData(handle, enabledSensorType, sensorBuffer)) {
+                    // SDL's Steam Controller 2026 driver reports yaw/roll with the opposite sign of the SDL
+                    // sensor convention (observed: up/down correct, left/right mirrored). Pitch is fine.
+                    boolean mirrorYaw = com.steamdeck.mc.config.ModConfig.getInstance().tritonGyroYawCorrection
+                            && SteamDeckInputManager.getInstance().getActiveKind()
+                            == com.steamdeck.mc.input.ControllerKind.STEAM_CONTROLLER_2026;
+                    if (mirrorYaw) {
+                        sensorBuffer.put(1, -sensorBuffer.get(1));
+                        sensorBuffer.put(2, -sensorBuffer.get(2));
+                    }
                     return toGyroData(dt);
                 }
             }

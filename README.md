@@ -20,7 +20,7 @@ Die Mod läuft in einem von zwei Modi:
 | Controller-Engine, Action-Sets, Radial-Menü, Gyro, Haptik | ✅ | ✅ |
 
 * **Automatische Erkennung (`deviceMode: "AUTO"`):** über die DMI-Kennungen in `/sys/class/dmi/id` (funktioniert auch in der Prism-Flatpak-Sandbox). Erkannt werden Steam Deck LCD (`Jupiter`, 60-Hz-Cap) und OLED (`Galileo`, 90-Hz-Cap), außerdem ROG Ally, Legion Go, MSI Claw, AYANEO, OneXPlayer, GPD Win und ZOTAC Zone. Fallback: Umgebungsvariable `SteamDeck=1` (SteamOS Game Mode). Laptops gelten als Desktop.
-* **Manuell überschreiben:** Im Spiel unter `Pausemenü → 🎮 Controller → ⚡ Akku & Eco → Gerätemodus` (Auto → Handheld → Desktop) oder in der Config `"deviceMode": "HANDHELD"` / `"DESKTOP"`. Der Wechsel greift sofort, ohne Neustart.
+* **Manuell überschreiben:** Im Spiel unter `Pausemenü → 🎮 Controller → ☰ Weitere Einstellungen → ⚡ Akku & Eco → Gerätemodus` (Auto → Handheld → Desktop) oder in der Config `"deviceMode": "HANDHELD"` / `"DESKTOP"`. Der Wechsel greift sofort, ohne Neustart.
 * Der aktive Modus steht im Log (`[PLATFORM]`) und im F3-HUD.
 
 ## 🎮 0b. Steam Controller (2026) & Steam Deck ohne Steam
@@ -54,6 +54,15 @@ Die Mod läuft in einem von zwei Modi:
   * Erkennt SteamOS Sleep über `org.freedesktop.login1.Manager` (`PrepareForSleep`) und Watchdog; pausiert und speichert das Singleplayer-Spiel sofort.
 
 ---
+
+## 🕹️ 1b. Controller-Konfigurator (`Pausemenü → 🎮 Controller`)
+* **Ansicht wie Steam Input:** eigene Zeichnung des Steam Decks bzw. Steam Controllers in der Mitte, jede Taste mit Glyphe und Belegung drumherum, unten Sticks, Steuerkreuz, Gyro und Tasten. Gedrückte Tasten leuchten live auf.
+* **Action-Sets** (Im Spiel, Menüs & Inventar, Zielen) mit L1/R1 wechseln. **A** belegt, **X** leert, **Y** wechselt die Zeichnung, **Menü** öffnet die weiteren Einstellungen (Eco, Bridge, Trackpads), **B** geht zurück.
+* **Taste drücken = hinspringen:** R4, L2, Stick-Klicks usw. springen direkt zu ihrer Zeile.
+* **Auswahlliste:** Spiel-Aktionen, Hotbar-Slots 1–9, Maus & Menü, Tastatur-Tasten (Taste drücken, bereits benutzte Tasten, Presets). Rechts neben jeder Aktion stehen die Tasten, die sie in diesem Action-Set schon belegen. Pro Taste: Haptik und „Gedrückt halten = wiederholen“.
+* **Kein Aussperren:** Der Konfigurator bekommt die Controller-Tasten direkt, nicht über die Belegung im Set „Menüs“.
+* **Linkes Trackpad als Raster 3×3** (native Controller): neun zusätzliche, pro Action-Set belegbare Felder. Im Spiel standardmäßig Hotbar-Slot 1–9. Beim Auflegen des Daumens erscheint ein Overlay mit Item-Icons, beim Feldwechsel gibt es einen Haptik-Tick, der Klick löst aus.
+* **Controller-Hinweis** (wie bei Steam) unten rechts beim Verbinden und Trennen, mit Typ und Akkustand, plus einmalige Warnung bei schwachem Controller-Akku (≤ 15 %).
 
 ## 🎮 2. Input-, Action-Set- & Controller-Engine (`com.steamdeck.mc.input`)
 * **3 Kontext-basierte Action-Sets (`IN_GAME`, `MENUS`, `AIMING`):**

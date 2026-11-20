@@ -91,6 +91,8 @@ public final class ControllerPresets {
             Map<DeckButton, ActionBinding> src = set == ActionSet.MENUS ? menus : game;
             Map<String, String> serialized = new HashMap<>();
             for (DeckButton b : DeckButton.values()) {
+                // The workshop layout has no 3x3 grid: keep the grid at its defaults (hotbar slots in-game)
+                if (b.gridIndex() >= 0) continue;
                 serialized.put(b.name(), src.getOrDefault(b, act(DeckAction.NONE)).serialize());
             }
             c.actionSets.put(set.name(), serialized);

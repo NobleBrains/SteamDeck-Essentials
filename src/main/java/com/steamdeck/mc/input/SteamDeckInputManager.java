@@ -138,6 +138,12 @@ public class SteamDeckInputManager {
     private void markControllerActivity() {
         lastControllerInputTime = System.currentTimeMillis();
         com.steamdeck.mc.power.PowerManager.getInstance().onUserActivity();
+        // Vanilla only counts keyboard/mouse as input: with a controller alone the game dropped to
+        // 30 FPS after 1 minute ("Inactivity FPS limit: AFK") and to 10 FPS after 10 minutes.
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && mc.getFramerateLimitTracker() != null) {
+            mc.getFramerateLimitTracker().onInputReceived();
+        }
     }
 
     public ActionSet getCurrentActionSet() {
@@ -179,6 +185,7 @@ public class SteamDeckInputManager {
                 com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().clearDevice();
             } else {
                 SteamDeckEssentials.LOGGER.info("[INPUT] SDL Gamepad disconnected: ID {}", activeGamepadId);
+                com.steamdeck.mc.gui.ControllerToast.getInstance().onDisconnected(activeKind, activeDeviceName);
                 releaseAllButtons();
                 SDLGamepad.SDL_CloseGamepad(activeGamepadHandle);
                 activeGamepadHandle = 0;
@@ -194,6 +201,7 @@ public class SteamDeckInputManager {
                 return;
             } else {
                 SteamDeckEssentials.LOGGER.info("[INPUT] SDL Joystick disconnected: ID {}", activeJoystickId);
+                com.steamdeck.mc.gui.ControllerToast.getInstance().onDisconnected(activeKind, activeDeviceName);
                 releaseAllButtons();
                 SDLJoystick.SDL_CloseJoystick(activeJoystickHandle);
                 activeJoystickHandle = 0;
@@ -219,6 +227,8 @@ public class SteamDeckInputManager {
                 activeKind = bestKind;
                 activeDeviceName = String.valueOf(SDLGamepad.SDL_GetGamepadName(handle));
                 logControllerDiagnostics(handle, best[0], bestKind);
+                lastPowerQuery = 0L; // battery of the new controller, not the cached one of the old
+                com.steamdeck.mc.gui.ControllerToast.getInstance().onConnected(bestKind, activeDeviceName);
                 if (bestKind == ControllerKind.STEAM_CONTROLLER_2026) {
                     com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().setDevice(
                             SDLGamepad.SDL_GetGamepadPath(handle),
@@ -249,6 +259,8 @@ public class SteamDeckInputManager {
                         activeDeviceName = String.valueOf(SDLJoystick.SDL_GetJoystickNameForID(joyId));
                         SteamDeckEssentials.LOGGER.info("[INPUT] Connected to raw SDL joystick: '{}' (ID {}, {})",
                                 activeDeviceName, joyId, activeKind.getLabel());
+                        lastPowerQuery = 0L;
+                        com.steamdeck.mc.gui.ControllerToast.getInstance().onConnected(activeKind, activeDeviceName);
                         return;
                     }
                 }
@@ -437,6 +449,7 @@ public class SteamDeckInputManager {
         if (isPressureClickActive(0)) hardLeft |= updatePressureClick(0, cfg.leftTrackpadClickPressure);
         if (isPressureClickActive(1)) hardRight |= updatePressureClick(1, cfg.rightTrackpadClickPressure);
         boolean leftPadDpad = "DPAD_MOVE".equals(cfg.leftTrackpadMode) && activeKind.isNativeValve() && !hasScreen;
+        boolean leftPadGrid = isGridModeActive() && !hasScreen && !VirtualKeyboard.getInstance().isOpen();
 
         // 1. Left Stick -> discrete 8-way movement in-game, or menu/gamemode navigation in screens
         short rawLx = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_LEFTX);
@@ -526,10 +539,16 @@ public class SteamDeckInputManager {
             }
             leftPadDpadWasDown = hardLeft;
             processButton(DeckButton.LEFT_TRACKPAD, false, client, set);
+        } else if (leftPadGrid) {
+            // The pad is a 3x3 grid: the click fires the field under the finger, not "Trackpad L"
+            leftPadDpadWasDown = false;
+            processButton(DeckButton.LEFT_TRACKPAD, false, client, set);
+            updateTrackpadGrid(client, set, hardLeft);
         } else {
             leftPadDpadWasDown = false;
             processButton(DeckButton.LEFT_TRACKPAD, hardLeft, client, set);
         }
+        if (!leftPadGrid) releaseTrackpadGrid(client, set);
         // SDL 3.4 mapping for Steam Deck & Steam Controller 2026 (libsdl-org/SDL #15601, #15612):
         //   TOUCHPAD = left pad click, MISC2 = right pad click, MISC3 = left stick touch,
         //   MISC4 = right stick touch, MISC1 = QAM, MISC5/6 = grip sense (Steam Controller only)
@@ -718,6 +737,19 @@ public class SteamDeckInputManager {
         if (hasScreen && !VirtualKeyboard.getInstance().isOpen()) {
             Screen screen = client.gui.screen();
 
+            // 0. Controller configurator: raw buttons, independent of the MENUS bindings (can't lock yourself out)
+            if (screen instanceof com.steamdeck.mc.gui.ControllerLayoutScreen layoutScreen) {
+                if (button == DeckButton.DPAD_UP || button == DeckButton.DPAD_DOWN
+                        || button == DeckButton.DPAD_LEFT || button == DeckButton.DPAD_RIGHT) {
+                    int dx = (button == DeckButton.DPAD_LEFT) ? -1 : (button == DeckButton.DPAD_RIGHT ? 1 : 0);
+                    int dy = (button == DeckButton.DPAD_UP) ? -1 : (button == DeckButton.DPAD_DOWN ? 1 : 0);
+                    handleDpadMenuNavigation(client, button, dx, dy, isDown, wasDown);
+                } else if (isDown && !wasDown) {
+                    layoutScreen.onControllerButton(button);
+                }
+                return;
+            }
+
             // 1. D-Pad Up/Down/Left/Right in Menus, Inventory & Gamemode Switcher
             if (button == DeckButton.DPAD_UP || button == DeckButton.DPAD_DOWN
                     || button == DeckButton.DPAD_LEFT || button == DeckButton.DPAD_RIGHT) {
@@ -868,6 +900,12 @@ public class SteamDeckInputManager {
                     client.gui.openChatScreen(ChatMethod.MESSAGE);
                 }
             }
+            case HOTBAR_SLOT_1, HOTBAR_SLOT_2, HOTBAR_SLOT_3, HOTBAR_SLOT_4, HOTBAR_SLOT_5,
+                 HOTBAR_SLOT_6, HOTBAR_SLOT_7, HOTBAR_SLOT_8, HOTBAR_SLOT_9 -> {
+                if (isDown && !wasDown && !hasScreen && client.player != null) {
+                    client.player.getInventory().setSelectedSlot(action.hotbarSlot());
+                }
+            }
             case HOTBAR_PREV -> handleHotbarAction(client, -1, isDown, wasDown);
             case HOTBAR_NEXT -> handleHotbarAction(client, 1, isDown, wasDown);
             case PAUSE -> {
@@ -1015,6 +1053,12 @@ public class SteamDeckInputManager {
             }
             VirtualKeyboard.playClickSound();
             com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerHotbarHaptic(step > 0 ? 1 : -1);
+            return;
+        }
+
+        if (screen instanceof com.steamdeck.mc.gui.ControllerLayoutScreen layoutScreen) {
+            layoutScreen.navigate(dx, dy);
+            com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerHotbarHaptic(dx != 0 ? dx : dy);
             return;
         }
 
@@ -1341,6 +1385,11 @@ public class SteamDeckInputManager {
             return null;
         }
 
+        // Only real new samples count. The pad reports at its own rate (BLE often slower than the frame
+        // rate): frames without a new sample used to yield "speed 0" followed by a double-speed frame,
+        // which made the tiered smoothing and the pointer acceleration jump back and forth (stutter).
+        boolean newSample = x != tracker.lastX || y != tracker.lastY;
+
         // Click freeze: detect the start of a press (hardware click or Steam-style click pressure)
         boolean clicked = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2)
                 || (isPressureClickActive(1) && touchPressure.get(0) >= ModConfig.getInstance().rightTrackpadClickPressure);
@@ -1358,6 +1407,10 @@ public class SteamDeckInputManager {
             return null;
         }
 
+        if (!newSample) {
+            // Keep lastNanos: the next real sample then gets the full time span since the previous one
+            return null;
+        }
         double dt = Math.max(0.001, Math.min(0.1, (now - tracker.lastNanos) / 1_000_000_000.0));
         double vx = (x - tracker.lastX) / dt;
         double vy = (y - tracker.lastY) / dt;
@@ -1533,6 +1586,98 @@ public class SteamDeckInputManager {
         }
         padPressureClick[side] = pressed;
         return pressed;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Left trackpad as 3x3 grid (nine extra buttons, e.g. hotbar slots 1-9)
+    // ---------------------------------------------------------------------------------------
+
+    /** Fraction of a cell the finger must move past the border before the hovered cell changes. */
+    private static final float GRID_HYSTERESIS = 0.04f;
+
+    private int gridHoverCell = -1;
+    private int gridPressedCell = -1;
+    private boolean gridClickWasDown = false;
+    private long gridLastTouchMs = 0L;
+
+    public boolean isGridModeActive() {
+        return "GRID_3X3".equals(ModConfig.getInstance().leftTrackpadMode)
+                && activeKind.isNativeValve() && activeGamepadHandle != 0;
+    }
+
+    /** Field under the finger (0..8) or -1. */
+    public int getGridHoverCell() {
+        return gridHoverCell;
+    }
+
+    /** Field that is clicked right now (0..8) or -1. */
+    public int getGridPressedCell() {
+        return gridPressedCell;
+    }
+
+    /** The grid overlay is shown while a finger is on the pad and shortly after lifting it. */
+    public boolean isGridOverlayVisible() {
+        return isGridModeActive() && System.currentTimeMillis() - gridLastTouchMs < 250L;
+    }
+
+    private int gridCellAt(float x, float y, int previous) {
+        if (previous >= 0) {
+            // Stay in the previous cell until the finger is clearly past its border (no flicker)
+            int pc = previous % 3;
+            int pr = previous / 3;
+            float m = GRID_HYSTERESIS;
+            if (x >= pc / 3.0f - m && x <= (pc + 1) / 3.0f + m && y >= pr / 3.0f - m && y <= (pr + 1) / 3.0f + m) {
+                return previous;
+            }
+        }
+        int col = Math.max(0, Math.min(2, (int) (x * 3.0f)));
+        int row = Math.max(0, Math.min(2, (int) (y * 3.0f)));
+        return row * 3 + col;
+    }
+
+    private void updateTrackpadGrid(Minecraft client, ActionSet set, boolean clicked) {
+        long now = System.currentTimeMillis();
+        if (padPressure[0] >= 0.0f) {
+            gridLastTouchMs = now;
+            int cell = gridCellAt(padX[0], padY[0], gridHoverCell);
+            if (cell != gridHoverCell) {
+                // Steam "touch menu" feel: a light tick whenever the finger crosses into another field
+                if (gridHoverCell >= 0 && gridPressedCell < 0) {
+                    com.steamdeck.mc.power.HapticFeedbackManager.getInstance()
+                            .triggerPadHaptic(false, false, (short) 14000, 10);
+                }
+                gridHoverCell = cell;
+                markControllerActivity();
+            }
+        } else if (!clicked) {
+            gridHoverCell = -1;
+        }
+
+        if (clicked != gridClickWasDown) {
+            com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerTrackpadClickHaptic(false, clicked);
+            if (clicked) {
+                markControllerActivity();
+                // The field is locked at the moment of the click, sliding while held does not switch it
+                gridPressedCell = gridHoverCell;
+            }
+        }
+        gridClickWasDown = clicked;
+
+        for (int i = 0; i < 9; i++) {
+            processButton(DeckButton.gridCell(i), clicked && gridPressedCell == i, client, set);
+        }
+        if (!clicked) gridPressedCell = -1;
+    }
+
+    /** Releases a held grid field (grid mode switched off, screen opened, controller changed). */
+    private void releaseTrackpadGrid(Minecraft client, ActionSet set) {
+        for (int i = 0; i < 9; i++) {
+            DeckButton b = DeckButton.gridCell(i);
+            if (Boolean.TRUE.equals(prevButtonStates.get(b))) processButton(b, false, client, set);
+        }
+        gridPressedCell = -1;
+        gridClickWasDown = false;
+        if (!isGridModeActive() || padPressure[0] < 0.0f) gridHoverCell = -1;
     }
 
     // On-screen keyboard: time of the last touch per pad (SteamOS keeps the pointer 100 ms after lifting)

@@ -101,6 +101,11 @@ public class PowerManager {
         // 2. Base target FPS: menu cap (30 on battery, 60 on AC) or in-game target (90 OLED / 60 LCD)
         int panelHz = PlatformDetector.getHardware().panelRefreshHz();
         int activeMenuCap = onBattery ? Math.max(15, config.menuFpsCap) : Math.max(30, config.acMenuFpsCap);
+        // The trackpad mouse pointer moves once per frame: keep it smooth while a finger is on the pad
+        if (com.steamdeck.mc.input.SteamDeckInputManager.getInstance().isTrackpadTouched(1)
+                && com.steamdeck.mc.input.SteamDeckInputManager.getInstance().getActiveKind().isNativeValve()) {
+            activeMenuCap = Math.max(activeMenuCap, Math.min(60, panelHz));
+        }
         int baseFps;
         if (hasActiveScreen(client)) {
             baseFps = activeMenuCap;

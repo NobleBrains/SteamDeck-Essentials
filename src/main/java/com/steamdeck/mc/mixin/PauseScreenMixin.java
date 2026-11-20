@@ -25,7 +25,7 @@ public abstract class PauseScreenMixin extends Screen {
         this.addRenderableWidget(
                 net.minecraft.client.gui.components.Button.builder(
                         Component.literal("🎮 Controller"),
-                        btn -> net.minecraft.client.Minecraft.getInstance().gui.setScreen(new com.steamdeck.mc.gui.SteamDeckConfigScreen(this))
+                        btn -> net.minecraft.client.Minecraft.getInstance().gui.setScreen(new com.steamdeck.mc.gui.ControllerLayoutScreen(this))
                 ).bounds(this.width - 105, 6, 95, 20).build()
         );
     }
