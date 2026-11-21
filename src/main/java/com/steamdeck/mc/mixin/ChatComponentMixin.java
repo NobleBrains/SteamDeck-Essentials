@@ -47,13 +47,35 @@ public abstract class ChatComponentMixin {
     @Shadow
     public abstract int getLinesPerPage();
 
+    @Shadow
+    public abstract void rescaleChat();
+
+    @org.spongepowered.asm.mixin.Unique
+    private int steamdeck$layoutVersion = 0;
+
+    /**
+     * The line list is stored in a layout-dependent order (see addMessageToDisplayQueue). When the
+     * chat layout switches between top and bottom, rebuild it once before drawing.
+     */
+    @Inject(
+            method = "extractRenderState(Lnet/minecraft/client/gui/components/ChatComponent$ChatGraphicsAccess;IILnet/minecraft/client/gui/components/ChatComponent$DisplayMode;)V",
+            at = @At("HEAD")
+    )
+    private void steamdeck$syncLayout(CallbackInfo ci) {
+        int v = com.steamdeck.mc.gui.ChatLayout.version();
+        if (v != this.steamdeck$layoutVersion) {
+            this.steamdeck$layoutVersion = v;
+            this.rescaleChat();
+        }
+    }
+
     @Inject(
             method = "addMessageToDisplayQueue",
             at = @At("HEAD"),
             cancellable = true
     )
     private void onAddMessageToDisplayQueue(GuiMessage message, CallbackInfo ci) {
-        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) return; // vanilla behaviour on desktop
+        if (!com.steamdeck.mc.gui.ChatLayout.isTop()) return; // vanilla layout (chat at the bottom)
         int width = Mth.floor((double) this.getWidth() / this.getScale());
         List<FormattedCharSequence> lines = message.splitLines(this.minecraft.font, width);
         boolean focused = this.isChatFocused();
@@ -84,7 +106,7 @@ public abstract class ChatComponentMixin {
             )
     )
     private int redirectChatBottom(float value) {
-        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) return Mth.floor(value);
+        if (!com.steamdeck.mc.gui.ChatLayout.isTop()) return Mth.floor(value);
         float scale = (float) this.getScale();
         float effectiveScale = scale <= 0.0F ? 1.0F : scale;
         return (int) Math.ceil(18.0F / effectiveScale);
@@ -99,7 +121,7 @@ public abstract class ChatComponentMixin {
             index = 1
     )
     private int modifyLineIndex(int lineIndex) {
-        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) return lineIndex;
+        if (!com.steamdeck.mc.gui.ChatLayout.isTop()) return lineIndex;
         return -(lineIndex + 1);
     }
 
@@ -112,7 +134,7 @@ public abstract class ChatComponentMixin {
             )
     )
     private void redirectScrollbarOuter(ChatComponent.ChatGraphicsAccess access, int x0, int y0, int x1, int y1, int color) {
-        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
+        if (!com.steamdeck.mc.gui.ChatLayout.isTop()) {
             access.fill(x0, y0, x1, y1, color);
             return;
         }
@@ -139,7 +161,7 @@ public abstract class ChatComponentMixin {
             )
     )
     private void redirectScrollbarInner(ChatComponent.ChatGraphicsAccess access, int x0, int y0, int x1, int y1, int color) {
-        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
+        if (!com.steamdeck.mc.gui.ChatLayout.isTop()) {
             access.fill(x0, y0, x1, y1, color);
             return;
         }
@@ -166,7 +188,7 @@ public abstract class ChatComponentMixin {
             )
     )
     private void redirectRestrictedPromptBg(ChatComponent.ChatGraphicsAccess access, int x0, int y0, int x1, int y1, int color) {
-        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
+        if (!com.steamdeck.mc.gui.ChatLayout.isTop()) {
             access.fill(x0, y0, x1, y1, color);
             return;
         }

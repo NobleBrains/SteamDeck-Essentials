@@ -5,8 +5,9 @@ package com.steamdeck.mc.input;
  */
 public enum ActionSet {
     IN_GAME("🎮 Im Spiel", "Erkunden, Laufen, Bauen & Kämpfen"),
-    MENUS("📦 Menüs & Inventar", "Kisten, Inventar, Amboss, Handelsmenüs"),
-    AIMING("🎯 Zielen & Bogen", "Automatisches Gyro-Zielen bei Bogen/Fernrohr");
+    MENUS("📦 Menüs & Inventar", "Kisten, Inventar, Amboss, Handelsmenüs");
+    // "Zielen" was removed: it only switched the gyro, which is now the gyro option "Nur beim Zielen".
+    // Own sets with conditions (e.g. per server) may come later.
 
     private final String title;
     private final String description;

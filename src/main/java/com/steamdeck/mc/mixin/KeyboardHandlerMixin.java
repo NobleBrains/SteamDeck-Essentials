@@ -18,11 +18,14 @@ public class KeyboardHandlerMixin {
     private void onKeyPress(long window, int action, KeyEvent event, CallbackInfo ci) {
         // The bridge swallows '[', ']', '\\', '/', F13, F14. On a desktop with a real keyboard that would
         // e.g. break '/' for commands, so it is only active in handheld mode unless explicitly enabled.
-        if (!SteamDeckInputManager.getInstance().isSteamInputBridgeActive()) {
-            return;
-        }
-        if (SteamDeckInputManager.getInstance().handleBridgeKeyEvent(event.key(), action)) {
+        SteamDeckInputManager input = SteamDeckInputManager.getInstance();
+        if (input.isSteamInputBridgeActive() && input.handleBridgeKeyEvent(event.key(), action)) {
             ci.cancel();
+            return; // a controller paddle sent by Steam Input, not the keyboard
+        }
+        // A real keyboard key (not one the mod sends for a controller button): keyboard is the input device now
+        if (action != 0 && !input.isDispatchingSyntheticKey()) {
+            input.noteKeyboardInput();
         }
     }
 }

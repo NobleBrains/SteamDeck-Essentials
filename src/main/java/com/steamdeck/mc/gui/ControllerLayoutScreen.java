@@ -295,7 +295,6 @@ public class ControllerLayoutScreen extends Screen {
         return switch (s) {
             case IN_GAME -> "Im Spiel";
             case MENUS -> "Menüs & Inventar";
-            case AIMING -> "Zielen";
         };
     }
 

@@ -31,7 +31,9 @@ public abstract class ChatScreenMixin extends Screen {
 
     @Inject(method = "init", at = @At("TAIL"))
     private void onInit(CallbackInfo ci) {
-        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) return;
+        // Decide now: was the chat opened with the controller (top + OSK) or the keyboard (vanilla)?
+        com.steamdeck.mc.gui.ChatLayout.onChatOpening();
+        if (!com.steamdeck.mc.gui.ChatLayout.isTop()) return;
         if (this.input != null) {
             this.input.setY(2);
             this.input.setHeight(12);
@@ -54,7 +56,7 @@ public abstract class ChatScreenMixin extends Screen {
             )
     )
     private void redirectChatInputBackground(GuiGraphicsExtractor graphics, int x0, int y0, int x1, int y1, int color) {
-        if (!com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
+        if (!com.steamdeck.mc.gui.ChatLayout.isTop()) {
             graphics.fill(x0, y0, x1, y1, color);
             return;
         }
@@ -71,6 +73,6 @@ public abstract class ChatScreenMixin extends Screen {
     )
     private int invertScrollChat(int lines) {
         // Chat is drawn top-down in handheld mode, so scrolling has to be inverted there only
-        return com.steamdeck.mc.platform.PlatformDetector.isHandheld() ? -lines : lines;
+        return com.steamdeck.mc.gui.ChatLayout.isTop() ? -lines : lines;
     }
 }

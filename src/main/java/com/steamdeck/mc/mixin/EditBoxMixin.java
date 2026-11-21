@@ -18,7 +18,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class EditBoxMixin {
     @Inject(method = "setFocused", at = @At("TAIL"))
     private void onSetFocused(boolean focused, CallbackInfo ci) {
-        if (focused && ModConfig.getInstance().oskAutoOpenOnInput && com.steamdeck.mc.platform.PlatformDetector.isHandheld()) {
+        if (focused && ModConfig.getInstance().oskAutoOpenOnInput
+                && com.steamdeck.mc.input.SteamDeckInputManager.getInstance().isControllerContext()) {
             Minecraft client = Minecraft.getInstance();
             if (client != null && client.gui != null && client.gui.screen() instanceof CreativeModeInventoryScreen) {
                 return;

@@ -36,6 +36,8 @@ public class SteamDeckEssentials implements ClientModInitializer {
 
     public static KeyMapping toggleKey;
     public static KeyMapping cycleSizeKey;
+    /** F12 in-game: open the chat WITH the on-screen keyboard. */
+    private static boolean oskOpenRequested = false;
 
     @Override
     public void onInitializeClient() {
@@ -87,7 +89,7 @@ public class SteamDeckEssentials implements ClientModInitializer {
             while (toggleKey.consumeClick()) {
                 if (client.gui != null && client.player != null) {
                     if (client.gui.screen() == null) {
-                        VirtualKeyboard.getInstance().setOpen(true);
+                        oskOpenRequested = true;
                         client.gui.openChatScreen(ChatMethod.MESSAGE);
                     } else {
                         VirtualKeyboard.getInstance().toggle();
@@ -107,6 +109,7 @@ public class SteamDeckEssentials implements ClientModInitializer {
             // Poll Gamepad / Controller
             SteamDeckInputManager.getInstance().poll(client);
             com.steamdeck.mc.gui.ControllerToast.getInstance().tick();
+            com.steamdeck.mc.gui.ChatLayout.tick(client);
 
             // Record Performance & Battery Telemetry
             com.steamdeck.mc.power.PerformanceTracker.getInstance().tick(client);
@@ -114,12 +117,14 @@ public class SteamDeckEssentials implements ClientModInitializer {
 
         // 5. Screen Lifecycle Hooks (OSK Rendering & Input)
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
-            // Auto-open OSK only when opening the Chat screen
-            if (config.oskAutoOpenOnInput && PlatformDetector.isHandheld() && screen instanceof ChatScreen) {
-                VirtualKeyboard.getInstance().setOpen(true);
-            } else {
-                VirtualKeyboard.getInstance().setOpen(false);
-            }
+            // Auto-open the OSK for the chat while the controller is the input device (always on the
+            // Deck; on a PC when the chat was opened with the controller, not with the keyboard's T).
+            // F12 in-game requests it explicitly.
+            boolean requested = oskOpenRequested;
+            oskOpenRequested = false;
+            boolean controllerChat = config.oskAutoOpenOnInput && screen instanceof ChatScreen
+                    && SteamDeckInputManager.getInstance().isControllerContext();
+            VirtualKeyboard.getInstance().setOpen(controllerChat || (requested && screen instanceof ChatScreen));
 
             // Render OSK, Controller Menu Hints, and AFK overlay above screen
             ScreenEvents.afterExtract(screen).register((screen1, graphics, mouseX, mouseY, tickDelta) -> {

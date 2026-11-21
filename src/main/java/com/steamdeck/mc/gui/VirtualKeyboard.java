@@ -491,6 +491,16 @@ public class VirtualKeyboard {
             graphics.fill(this.toggleX + this.toggleW - 1, this.toggleY, this.toggleX + this.toggleW, this.toggleY + this.toggleH, 0xFF00E5FF);
             graphics.centeredText(font, "KB", this.toggleX + this.toggleW / 2, this.toggleY + (this.toggleH - 7) / 2, textColor);
         } else {
+            // Controller legend above the keyboard (only while a controller is the input device)
+            if (com.steamdeck.mc.input.SteamDeckInputManager.getInstance().isControllerContext()) {
+                String legend = font.plainSubstrByWidth(
+                        "A Taste  •  X Löschen  •  Y Leer  •  Start Senden  •  B Tastatur aus  •  L/R tippen", screen.width - 12);
+                int lw = font.width(legend);
+                int lx = (screen.width - lw) / 2;
+                int ly = this.kbY - 11;
+                graphics.fill(lx - 4, ly - 2, lx + lw + 4, ly + 9, 0xAA0D1117);
+                graphics.text(font, legend, lx, ly, 0xFF88CCFF, false);
+            }
             // Render Keyboard Panels
             if (this.splitMode) {
                 this.renderPanel(graphics, this.leftX, this.kbY, this.leftWidth, this.kbHeight);
@@ -526,14 +536,19 @@ public class VirtualKeyboard {
         }
     }
 
+    /** Which pointer moved last (A types with that one). */
+    private boolean lastCursorRight = true;
+
     public void moveLeftCursor(float dx, float dy) {
         this.dualCursorActive = true;
+        this.lastCursorRight = false;
         this.leftCursorX = Math.max(leftX + 4, Math.min(leftX + leftWidth - 4, this.leftCursorX + dx));
         this.leftCursorY = Math.max(kbY + 4, Math.min(kbY + kbHeight - 4, this.leftCursorY + dy));
     }
 
     public void moveRightCursor(float dx, float dy) {
         this.dualCursorActive = true;
+        this.lastCursorRight = true;
         this.rightCursorX = Math.max(rightX + 4, Math.min(rightX + rightWidth - 4, this.rightCursorX + dx));
         this.rightCursorY = Math.max(kbY + 4, Math.min(kbY + kbHeight - 4, this.rightCursorY + dy));
     }
@@ -592,6 +607,7 @@ public class VirtualKeyboard {
             this.leftCursorY = py;
         }
         this.dualCursorActive = true;
+        this.lastCursorRight = right;
         padTouching[side] = true;
 
         // Key under the finger with hysteresis, haptic tick when it changes (like SteamOS)
@@ -629,6 +645,18 @@ public class VirtualKeyboard {
             }
         }
         return best;
+    }
+
+    /** A button: types the key under the pointer that was moved last. */
+    public boolean triggerLastCursorClick(Screen screen) {
+        return this.lastCursorRight ? triggerRightCursorClick(screen) : triggerLeftCursorClick(screen);
+    }
+
+    /** Presses a special key (backspace, space, enter, ...) without aiming at it. */
+    public void tapAction(KeyType type, Screen screen) {
+        if (!this.open || screen == null) return;
+        this.handleKeyTap(Key.action("", type, 1.0f), screen, 0);
+        playClickSound();
     }
 
     public boolean triggerLeftCursorClick(Screen screen) {

@@ -21,7 +21,7 @@ import java.util.Map;
  *     mod's own default action.</li>
  *     <li>{@code controller_action} (Steam overlay: SHOW_KEYBOARD, game clip, SCREENSHOT) has no
  *     Steam-free equivalent; SCREENSHOT becomes Minecraft's F2 screenshot, the clip is dropped.</li>
- *     <li>Steam had one action set; the mod's IN_GAME and AIMING sets get the same bindings, MENUS gets
+ *     <li>Steam had one action set; the mod's IN_GAME set gets them, MENUS gets
  *     the same keys where they make sense in screens.</li>
  * </ul>
  */

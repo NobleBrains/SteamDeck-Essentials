@@ -20,6 +20,19 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.0.0-beta.2
+
+### Chat & Bildschirmtastatur für Controller (auch am PC)
+* **Chat oben, wenn mit dem Controller getippt wird** (`chatLayout`: `AUTO` als Standard, `TOP`, `BOTTOM`). Wie im Projekt Deck-OSK liegt die Eingabezeile am oberen Rand und die Nachrichten laufen von oben nach unten, damit die Bildschirmtastatur unten nichts verdeckt. Bisher galt das nur im Handheld-Modus. Jetzt entscheidet das Eingabegerät: Wurde der Controller zuletzt benutzt (z. B. „Chat öffnen“ per Taste), gilt das Controller-Layout. Wird auf einer echten Tastatur getippt (z. B. T), bleibt alles wie in Vanilla. Tasten, die die Mod selbst für Controller-Knöpfe schickt, zählen nicht als Tastatur. Während der Chat offen ist, ändert sich das Layout nie. Beim Wechsel wird die Zeilenliste des Chats einmal neu aufgebaut (sie ist je nach Layout anders sortiert).
+* **Die OSK öffnet automatisch** beim Chat, wenn mit dem Controller gespielt wird, auch am PC. F12 im Spiel öffnet den Chat immer mit OSK.
+### Action-Sets
+* **„Zielen“ ist kein eigenes Action-Set mehr.** Es hat nur den Gyro umgeschaltet, und das erledigt jetzt die Gyro-Option „Nur beim Zielen“. Es bleiben „Im Spiel“ und „Menüs & Inventar“. Alte Belegungen von „Zielen“ in der Config werden ignoriert. Eigene Sets mit Bedingungen (z. B. pro Server) können später kommen.
+* „Weitere Einstellungen“ zeigt nur noch Eco, Bridge und Pads. Die Belegungen werden im Konfigurator gemacht. „Workshop-Layout laden“ ist dort jetzt immer sichtbar.
+
+* **OSK mit den Controller-Tasten bedienen:** A tippt die Taste unter dem zuletzt bewegten Zeiger, X löscht, Y setzt ein Leerzeichen, Start sendet, B blendet die Tastatur aus. Das Zielen geht weiter mit Sticks oder Trackpads, Tippen mit L1/L2/linkem Pad bzw. R1/R2/rechtem Pad. Vorher hat z. B. A mit der Menü-Belegung „Enter“ die halbe Nachricht abgeschickt. Über der Tastatur steht eine kurze Legende.
+
+---
+
 ## 🚀 Version 1.0.0-beta.1
 
 **Neues Versionsschema:** Solange die Mod in Entwicklung ist, heißen die Versionen `1.0.0-beta.N` (SemVer, das Fabric versteht). Die bisherigen Stände 1.0.0 bis 1.5.1 bleiben unten als Entwicklungsgeschichte stehen.

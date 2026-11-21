@@ -21,8 +21,15 @@ import net.minecraft.network.chat.Component;
  */
 public class SteamDeckConfigScreen extends Screen {
     private final Screen parent;
-    private int currentTab = 0; // 0=In-Game, 1=Menus, 2=Aiming, 3=Eco/Akku, 4=Hardware/Bridge, 5=Trackpads
-    private static final int TAB_COUNT = 6;
+    private int currentTab = 3; // 0=In-Game, 1=Menus (old binding tabs, now in ControllerLayoutScreen), 3=Eco/Akku, 4=Hardware/Bridge, 5=Trackpads
+    /** Bindings are edited in the controller configurator; this screen only holds the further settings. */
+    private static final int[] VISIBLE_TABS = {3, 4, 5};
+    private static final int TAB_COUNT = VISIBLE_TABS.length;
+
+    private static int tabPosition(int tab) {
+        for (int i = 0; i < VISIBLE_TABS.length; i++) if (VISIBLE_TABS[i] == tab) return i;
+        return 0;
+    }
     private DeckButton selectingButton = null;
     private int modalSubTab = 0; // 0=Game Actions, 1=Mouse & Special
 
@@ -98,7 +105,6 @@ public class SteamDeckConfigScreen extends Screen {
     private ActionSet getSelectedActionSet() {
         return switch (this.currentTab) {
             case 1 -> ActionSet.MENUS;
-            case 2 -> ActionSet.AIMING;
             default -> ActionSet.IN_GAME;
         };
     }
@@ -129,9 +135,10 @@ public class SteamDeckConfigScreen extends Screen {
         int tabY = 27;
         int tabStartX = (this.width - tabW * tabCount - (tabCount - 1) * 3) / 2;
 
-        String[] tabLabels = {"🎮 Spiel", "📦 Menüs", "🎯 Zielen", "⚡ Eco", "⚙️ Bridge", "🖐 Pads"};
-        for (int i = 0; i < tabCount; i++) {
-            int tx = tabStartX + i * (tabW + 3);
+        String[] tabLabels = {"🎮 Spiel", "📦 Menüs", "", "⚡ Eco", "⚙️ Bridge", "🖐 Pads"};
+        for (int p = 0; p < tabCount; p++) {
+            int i = VISIBLE_TABS[p];
+            int tx = tabStartX + p * (tabW + 3);
             boolean active = (i == this.currentTab);
             boolean hover = mouseX >= tx && mouseX <= tx + tabW && mouseY >= tabY && mouseY <= tabY + tabH;
 
@@ -170,8 +177,8 @@ public class SteamDeckConfigScreen extends Screen {
         graphics.fill(resetX, btnY, resetX + 110, btnY + btnH, resetHover ? 0xFF442222 : 0xFF221111);
         graphics.centeredText(font, "Standard laden", resetX + 55, btnY + 6, resetHover ? 0xFFFF7777 : 0xFFCC5555);
 
-        // Preset Button (action set tabs only)
-        if (this.currentTab < 3) {
+        // Preset Button (applies the whole workshop layout: bindings of all sets + pad/stick settings)
+        {
             int presetW = Math.min(170, this.width - 2 * 120 - 20);
             int presetX = (this.width - presetW) / 2;
             boolean presetHover = mouseX >= presetX && mouseX <= presetX + presetW && mouseY >= btnY && mouseY <= btnY + btnH;
@@ -890,10 +897,10 @@ public class SteamDeckConfigScreen extends Screen {
         int tabH = 17;
         int tabY = 27;
         int tabStartX = (this.width - tabW * tabCount - (tabCount - 1) * 3) / 2;
-        for (int i = 0; i < tabCount; i++) {
-            int tx = tabStartX + i * (tabW + 3);
+        for (int p = 0; p < tabCount; p++) {
+            int tx = tabStartX + p * (tabW + 3);
             if (mouseX >= tx && mouseX <= tx + tabW && mouseY >= tabY && mouseY <= tabY + tabH) {
-                this.currentTab = i;
+                this.currentTab = VISIBLE_TABS[p];
                 this.listeningForBridgeKey = null;
                 VirtualKeyboard.playClickSound();
                 return true;
@@ -954,7 +961,7 @@ public class SteamDeckConfigScreen extends Screen {
             }
             return true;
         }
-        if (this.currentTab < 3) {
+        {
             int presetW = Math.min(170, this.width - 2 * 120 - 20);
             int presetX = (this.width - presetW) / 2;
             if (mouseX >= presetX && mouseX <= presetX + presetW && mouseY >= btnY && mouseY <= btnY + btnH) {
@@ -1270,7 +1277,7 @@ public class SteamDeckConfigScreen extends Screen {
         int maxCols = (this.currentTab < 3) ? 1 : 0;
 
         if (this.navRow == -1) {
-            this.currentTab = Math.max(0, Math.min(TAB_COUNT - 1, this.currentTab + dx));
+            this.currentTab = VISIBLE_TABS[Math.max(0, Math.min(TAB_COUNT - 1, tabPosition(this.currentTab) + dx))];
             this.navRow = Math.max(-1, Math.min(maxRows, this.navRow + dy));
         } else {
             this.navCol = Math.max(0, Math.min(maxCols, this.navCol + dx));
@@ -1283,7 +1290,7 @@ public class SteamDeckConfigScreen extends Screen {
             // Same geometry as the tab bar in extractRenderState()
             int tabW = Math.min(95, (this.width - 24) / TAB_COUNT);
             int startX = (this.width - tabW * TAB_COUNT - (TAB_COUNT - 1) * 3) / 2;
-            targetX = startX + this.currentTab * (tabW + 3) + tabW / 2;
+            targetX = startX + tabPosition(this.currentTab) * (tabW + 3) + tabW / 2;
             targetY = 27 + 17 / 2;
         } else if (this.navRow == maxRows) {
             int btnY = this.height - 23;

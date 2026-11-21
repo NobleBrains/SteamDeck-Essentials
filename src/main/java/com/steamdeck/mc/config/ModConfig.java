@@ -125,6 +125,8 @@ public class ModConfig {
     public boolean disableLizardMode = true;
     /** Ignore the controller while Minecraft is not the focused window (desktop gets it back). */
     public boolean releaseControllerWhenUnfocused = true;
+    /** Chat position: AUTO (top while the controller is used, for the on-screen keyboard), TOP, BOTTOM. */
+    public String chatLayout = "AUTO";
     /** Shows the live pad sample rate / frame rate line (debugging). */
     public boolean trackpadDebugOverlay = false;
     public boolean aimItemsOnly = true; // legacy, see gyroActivation
@@ -263,32 +265,6 @@ public class ModConfig {
                 case RB, R4 -> DeckAction.HOTBAR_NEXT;
                 default -> DeckAction.NONE;
             };
-        } else if (set == ActionSet.AIMING) {
-            return switch (button) {
-                case A, R5 -> DeckAction.JUMP;
-                case B -> DeckAction.DROP;
-                case X -> DeckAction.SWAP_OFFHAND;
-                case Y -> DeckAction.INVENTORY;
-                case LB -> DeckAction.NONE; // was the (non-vanilla) zoom
-                case RB -> DeckAction.PICK_BLOCK;
-                case LT -> DeckAction.USE;
-                case RT -> DeckAction.ATTACK;
-                case L4 -> DeckAction.HOTBAR_PREV;
-                case R4 -> DeckAction.HOTBAR_NEXT;
-                case L5 -> DeckAction.SNEAK_TOGGLE;
-                case L3 -> DeckAction.SPRINT;
-                case R3 -> DeckAction.RADIAL_MENU_CYCLE;
-                case RIGHT_TRACKPAD -> DeckAction.JUMP;
-                case LEFT_TRACKPAD -> DeckAction.OPEN_CHAT;
-                case DPAD_UP -> DeckAction.PICK_BLOCK;
-                case DPAD_DOWN -> DeckAction.SNEAK_TOGGLE;
-                case DPAD_LEFT -> DeckAction.TOGGLE_PERSPECTIVE;
-                case DPAD_RIGHT -> DeckAction.OPEN_CHAT;
-                case START -> DeckAction.PAUSE;
-                case SELECT -> DeckAction.INVENTORY;
-                case LEFT_STICK_TOUCH, RIGHT_STICK_TOUCH -> DeckAction.NONE;
-                default -> DeckAction.NONE;
-            };
         } else {
             // IN_GAME (Default)
             return switch (button) {
@@ -346,6 +322,7 @@ public class ModConfig {
         if (!"DPAD_MOVE".equals(this.leftTrackpadMode) && !"GRID_3X3".equals(this.leftTrackpadMode)) {
             this.leftTrackpadMode = "BUTTON";
         }
+        if (!java.util.Set.of("AUTO", "TOP", "BOTTOM").contains(this.chatLayout)) this.chatLayout = "AUTO";
         if (!java.util.Set.of("AIM_ONLY", "ALWAYS", "TRACKPAD_TOUCH", "RIGHT_STICK_TOUCH").contains(this.gyroActivation)) {
             this.gyroActivation = "AIM_ONLY";
         }

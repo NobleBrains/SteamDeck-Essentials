@@ -354,9 +354,6 @@ public class SteamDeckInputManager {
         if (client.gui != null && (client.gui.screen() != null || client.gui.overlay() != null)) {
             return ActionSet.MENUS;
         }
-        if (GyroManager.getInstance().isContextuallyAiming(client.player)) {
-            return ActionSet.AIMING;
-        }
         return ActionSet.IN_GAME;
     }
 
@@ -393,6 +390,46 @@ public class SteamDeckInputManager {
             processButton(DeckButton.LEFT_STICK_TOUCH, bridgeL3TouchDown, client, currentActionSet);
             processButton(DeckButton.RIGHT_STICK_TOUCH, bridgeR3TouchDown, client, currentActionSet);
         }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Which device is the player using right now: controller or a real keyboard?
+    // ---------------------------------------------------------------------------------------
+
+    private long lastPhysicalKeyboardMs = 0L;
+    private int syntheticKeyDepth = 0;
+
+    /** Key events the mod sends for controller buttons go through vanilla's KeyboardHandler too. */
+    private void dispatchKey(Minecraft client, int action, KeyEvent event) {
+        if (client.keyboardHandler == null || client.getWindow() == null) return;
+        syntheticKeyDepth++;
+        try {
+            client.keyboardHandler.keyPress(client.getWindow().handle(), action, event);
+        } finally {
+            syntheticKeyDepth--;
+        }
+    }
+
+    public boolean isDispatchingSyntheticKey() {
+        return syntheticKeyDepth > 0;
+    }
+
+    /** A real keyboard key was pressed. */
+    public void noteKeyboardInput() {
+        lastPhysicalKeyboardMs = System.currentTimeMillis();
+    }
+
+    /**
+     * True while the controller is the input device in use: it was used more recently than a real
+     * keyboard. Then text input gets the on-screen keyboard and the chat moves to the top. On a
+     * handheld the controller counts as in use until a keyboard is typed on.
+     */
+    public boolean isControllerContext() {
+        if (!hasController()) return false;
+        if (lastPhysicalKeyboardMs == 0L) {
+            return com.steamdeck.mc.platform.PlatformDetector.isHandheld() || lastControllerInputTime > 0L;
+        }
+        return lastControllerInputTime >= lastPhysicalKeyboardMs;
     }
 
     /** True while Minecraft has the window focus (or the option is off). */
@@ -758,7 +795,7 @@ public class SteamDeckInputManager {
         }
 
         // A button pressed in-game keeps its in-game binding until it is released, even if a screen opens
-        // or the action set changes meanwhile (e.g. hold A = jump, then draw a bow -> AIMING). Before, the
+        // or the action set changes meanwhile (e.g. hold A = jump, then open the inventory). Before, the
         // release went to the new set's binding and the original key (jump, attack, zoom, custom key) stuck.
         boolean screenNow = client.gui != null && client.gui.screen() != null;
         if (isDown && !wasDown) {
@@ -778,6 +815,29 @@ public class SteamDeckInputManager {
                 }
                 return; // while still held in the new context: no new action
             }
+        }
+
+        // On-screen keyboard face buttons (like Steam's keyboard): A = key under the last moved pointer,
+        // X = backspace, Y = space, Start = enter/send, B = hide the keyboard. Both edges are consumed so
+        // the MENUS binding of these buttons (e.g. A = Enter) can't send the half-typed message.
+        if (com.steamdeck.mc.gui.VirtualKeyboard.getInstance().isOpen() && client.gui != null && client.gui.screen() != null
+                && (button == DeckButton.A || button == DeckButton.B || button == DeckButton.X
+                    || button == DeckButton.Y || button == DeckButton.START)) {
+            if (isDown && !wasDown) {
+                com.steamdeck.mc.gui.VirtualKeyboard osk = com.steamdeck.mc.gui.VirtualKeyboard.getInstance();
+                Screen screen = client.gui.screen();
+                switch (button) {
+                    case A -> osk.triggerLastCursorClick(screen);
+                    case X -> osk.tapAction(com.steamdeck.mc.gui.VirtualKeyboard.KeyType.BACKSPACE, screen);
+                    case Y -> osk.tapAction(com.steamdeck.mc.gui.VirtualKeyboard.KeyType.SPACE, screen);
+                    case START -> osk.tapAction(com.steamdeck.mc.gui.VirtualKeyboard.KeyType.ENTER, screen);
+                    default -> {
+                        osk.setOpen(false);
+                        com.steamdeck.mc.gui.VirtualKeyboard.playClickSound();
+                    }
+                }
+            }
+            return;
         }
 
         // Virtual Keyboard Dual-Trackpad / Dual-Cursor Typing
@@ -916,8 +976,7 @@ public class SteamDeckInputManager {
                     if (repeat && !isDown) {
                         // a synthetic repeat sends one "repeat" key event (action 2) instead of release+press
                     } else {
-                        client.keyboardHandler.keyPress(client.getWindow().handle(), repeat ? 2 : (isDown ? 1 : 0),
-                                new net.minecraft.client.input.KeyEvent(keyCode, keyCode, 0));
+                        dispatchKey(client, repeat ? 2 : (isDown ? 1 : 0), new KeyEvent(keyCode, keyCode, 0));
                     }
                 }
             } catch (Throwable t) {
@@ -1304,7 +1363,7 @@ public class SteamDeckInputManager {
             client.mouseHandler.onButton(window,
                     new MouseButtonInfo(key.getValue(), menuShiftHeld ? InputConstants.MOD_SHIFT : 0), isDown ? 1 : 0);
         } else if (client.keyboardHandler != null) {
-            client.keyboardHandler.keyPress(window, isDown ? 1 : 0, new KeyEvent(key.getValue(), key.getValue(), 0));
+            dispatchKey(client, isDown ? 1 : 0, new KeyEvent(key.getValue(), key.getValue(), 0));
         }
     }
 
