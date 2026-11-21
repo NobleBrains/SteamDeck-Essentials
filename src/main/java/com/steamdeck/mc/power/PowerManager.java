@@ -123,7 +123,8 @@ public class PowerManager {
             float factor = getAfkThrottleFactor();
             if (factor < 0.999f) {
                 int minFloor = onBattery ? config.minAfkFps : config.acMinAfkFps;
-                int throttledFps = Math.max(minFloor, Math.round(baseFps * factor));
+                // The floor may never lift the rate above the un-throttled base (e.g. a 30 FPS user limit)
+                int throttledFps = Math.max(Math.min(minFloor, baseFps), Math.round(baseFps * factor));
                 return throttledFps;
             }
         }

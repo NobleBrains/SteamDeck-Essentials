@@ -13,7 +13,6 @@ public enum DeckAction {
     SNEAK("Schleichen", "Shift halten"),
     SNEAK_TOGGLE("Sneak (Toggle)", "Schleichen an/aus"),
     SPRINT("Sprinten", "L-Strg"),
-    ZOOM("Zoom", "C / Zoom-Taste"),
     PICK_BLOCK("Block wählen", "Mittelklick"),
     DROP("Item werfen", "Q"),
     INVENTORY("Inventar", "E"),
@@ -45,7 +44,18 @@ public enum DeckAction {
     CLOSE_SCREEN("Menü schließen", "Zurück / Schließen"),
 
     // Custom Keyboard Key
-    CUSTOM_KEY("⌨️ Eigene Taste", "Tastatur-Taste mit Name");
+    CUSTOM_KEY("⌨️ Eigene Taste", "Tastatur-Taste mit Name"),
+
+    // Any key mapping from Minecraft's controls screen, including other mods (e.g. a zoom mod)
+    KEY_MAPPING("Minecraft-/Mod-Belegung", "Belegung aus den Steuerungs-Optionen");
+
+    /** Actions that are mouse clicks / attack / use: never hold-to-repeat (would be an autoclicker). */
+    public boolean isClickAction() {
+        return switch (this) {
+            case ATTACK, USE, PICK_BLOCK, MOUSE_LEFT_CLICK, MOUSE_RIGHT_CLICK, MOUSE_MIDDLE_CLICK, MOUSE_QUICK_MOVE -> true;
+            default -> false;
+        };
+    }
 
     private final String label;
     private final String description;

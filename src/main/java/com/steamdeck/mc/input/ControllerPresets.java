@@ -43,7 +43,7 @@ public final class ControllerPresets {
         // group 7 "switch"
         game.put(DeckButton.SELECT, act(DeckAction.INVENTORY));                                 // button_escape (View) = E
         game.put(DeckButton.START, act(DeckAction.PAUSE));                                      // button_menu = ESCAPE
-        game.put(DeckButton.LB, act(DeckAction.ZOOM));                                          // xinput shoulder_left -> mod default
+        game.put(DeckButton.LB, act(DeckAction.NONE));                                            // xinput shoulder_left -> mod default
         game.put(DeckButton.RB, act(DeckAction.PICK_BLOCK));                                    // xinput shoulder_right -> mod default
         game.put(DeckButton.L5, act(DeckAction.SNEAK));                                         // button_back_left = LEFT_SHIFT (hold)
         game.put(DeckButton.R5, act(DeckAction.NONE));                                          // button_back_right = ts_none

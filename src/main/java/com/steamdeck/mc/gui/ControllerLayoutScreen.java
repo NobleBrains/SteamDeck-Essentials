@@ -364,10 +364,18 @@ public class ControllerLayoutScreen extends Screen {
         } else {
             ActionBinding b = ModConfig.getInstance().getBinding(set, focus.button());
             help = focus.button().getDisplayName() + ": " + (b.getAction() == DeckAction.NONE ? "nicht belegt"
-                    : (b.isCustomKey() ? "Tastatur-Taste " + ActionBinding.getKeyLabel(b.getCustomKeyCode()) : b.getAction().getDescription()))
+                    : (b.isCustomKey() ? "Tastatur-Taste " + ActionBinding.getKeyLabel(b.getCustomKeyCode())
+                    : (b.isMapping() ? mappingHelp(b) : b.getAction().getDescription())))
                     + (b.hasHaptic() ? "  •  Haptik" : "") + (b.hasRepeat() ? "  •  Halten wiederholt" : "");
         }
         g.text(font, font.plainSubstrByWidth(help, W - 16), (W - Math.min(W - 16, font.width(help))) / 2, H - 30, DIM, false);
+    }
+
+    private static String mappingHelp(ActionBinding b) {
+        net.minecraft.client.KeyMapping km = net.minecraft.client.KeyMapping.get(b.getMappingName());
+        if (km == null) return "Steuerung „" + b.getMappingLabel() + "“ (Mod nicht geladen)";
+        String key = km.isUnbound() ? "ohne Taste" : "Taste " + km.getTranslatedKeyMessage().getString();
+        return "Steuerung „" + b.getMappingLabel() + "“ (" + key + ", funktioniert auch bei anderer Taste)";
     }
 
     /** Footer hints; positions are remembered for mouse clicks. */
@@ -543,6 +551,11 @@ public class ControllerLayoutScreen extends Screen {
         if (best != null) focus = best;
     }
 
+    /** True while the "press a keyboard key" prompt waits (the Steam Input bridge must not swallow keys then). */
+    public boolean isListeningForKey() {
+        return picker.open && picker.listening;
+    }
+
     /** A physical controller button was pressed (edge) while this screen is open. */
     public void onControllerButton(DeckButton b) {
         switch (b) {
@@ -616,15 +629,15 @@ public class ControllerLayoutScreen extends Screen {
         double cx = (event.x() - offX) / scale;
         double cy = (event.y() - offY) / scale;
         if (picker.open) {
-            picker.click(cx, cy, event.button() == 1);
+            picker.click(cx, cy, event.button() == InputConstants.MOUSE_BUTTON_RIGHT);
             return true;
         }
         if (grid.open) {
-            grid.click(cx, cy, event.button() == 1);
+            grid.click(cx, cy, event.button() == InputConstants.MOUSE_BUTTON_RIGHT);
             return true;
         }
-        if (event.button() == 1) {
-            // Right click clears like X
+        if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
+            // Right click clears like X (Minecraft 26.3 / SDL3: left = 1, right = 3)
             for (Item it : items) {
                 if (it.contains(cx, cy)) {
                     focus = it;
@@ -797,9 +810,14 @@ public class ControllerLayoutScreen extends Screen {
             {"Quests", 15}, {"Mod-Menü", 19}, {"Chat", 23}
     };
 
-    private enum EntryType { HEADER, ACTION, KEY, LISTEN, TOGGLE_HAPTIC, TOGGLE_REPEAT }
+    private enum EntryType { HEADER, ACTION, KEY, MAPPING, LISTEN, TOGGLE_HAPTIC, TOGGLE_REPEAT }
 
-    private record Entry(EntryType type, String text, DeckAction action, int keyCode) {
+    /** {@code mapping}: key mapping name for MAPPING entries (e.g. "key.zoomify.zoom"). */
+    private record Entry(EntryType type, String text, DeckAction action, int keyCode, String mapping) {
+        Entry(EntryType type, String text, DeckAction action, int keyCode) {
+            this(type, text, action, keyCode, null);
+        }
+
         boolean selectable() { return type != EntryType.HEADER; }
     }
 
@@ -851,14 +869,15 @@ public class ControllerLayoutScreen extends Screen {
             ActionBinding cur = cfg.getBinding(set, button);
             if (cur.getAction() != DeckAction.NONE) {
                 entries.add(new Entry(EntryType.TOGGLE_HAPTIC, "", null, 0));
-                entries.add(new Entry(EntryType.TOGGLE_REPEAT, "", null, 0));
+                // No hold-to-repeat for attack, use and mouse clicks (would be an autoclicker)
+                if (cur.allowsRepeat()) entries.add(new Entry(EntryType.TOGGLE_REPEAT, "", null, 0));
             }
             entries.add(new Entry(EntryType.ACTION, "-- Keine Aktion", DeckAction.NONE, 0));
             entries.add(new Entry(EntryType.HEADER, "SPIEL", null, 0));
             for (DeckAction a : new DeckAction[]{DeckAction.ATTACK, DeckAction.USE, DeckAction.JUMP, DeckAction.SNEAK,
                     DeckAction.SNEAK_TOGGLE, DeckAction.SPRINT, DeckAction.INVENTORY, DeckAction.DROP,
                     DeckAction.SWAP_OFFHAND, DeckAction.PICK_BLOCK, DeckAction.HOTBAR_PREV, DeckAction.HOTBAR_NEXT,
-                    DeckAction.ZOOM, DeckAction.TOGGLE_PERSPECTIVE, DeckAction.OPEN_CHAT, DeckAction.TOGGLE_DEBUG,
+                    DeckAction.TOGGLE_PERSPECTIVE, DeckAction.OPEN_CHAT, DeckAction.TOGGLE_DEBUG,
                     DeckAction.PAUSE, DeckAction.RADIAL_MENU_CYCLE}) {
                 entries.add(new Entry(EntryType.ACTION, a.getLabel(), a, 0));
             }
@@ -889,9 +908,30 @@ public class ControllerLayoutScreen extends Screen {
             for (Map.Entry<Integer, String> k : keys.entrySet()) {
                 entries.add(new Entry(EntryType.KEY, k.getValue(), DeckAction.CUSTOM_KEY, k.getKey()));
             }
+
+            // Every key mapping from Minecraft's controls screen, other mods first (e.g. a zoom mod).
+            // Pressed directly, so it works whatever key it is bound to (even unbound).
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null && mc.options != null) {
+                Map<net.minecraft.client.KeyMapping.Category, List<net.minecraft.client.KeyMapping>> byCategory = new LinkedHashMap<>();
+                List<net.minecraft.client.KeyMapping> all = new ArrayList<>(java.util.Arrays.asList(mc.options.keyMappings));
+                all.sort(java.util.Comparator.comparing(
+                        (net.minecraft.client.KeyMapping k) -> "minecraft".equals(k.getCategory().id().getNamespace()) ? 1 : 0));
+                for (net.minecraft.client.KeyMapping k : all) {
+                    byCategory.computeIfAbsent(k.getCategory(), c -> new ArrayList<>()).add(k);
+                }
+                for (Map.Entry<net.minecraft.client.KeyMapping.Category, List<net.minecraft.client.KeyMapping>> c : byCategory.entrySet()) {
+                    entries.add(new Entry(EntryType.HEADER, "STEUERUNG: " + c.getKey().label().getString().toUpperCase(), null, 0));
+                    for (net.minecraft.client.KeyMapping k : c.getValue()) {
+                        String name = net.minecraft.network.chat.Component.translatable(k.getName()).getString();
+                        entries.add(new Entry(EntryType.MAPPING, name, DeckAction.KEY_MAPPING, 0, k.getName()));
+                    }
+                }
+            }
         }
 
         static String keyOf(ActionBinding b) {
+            if (b.isMapping()) return "MAP:" + b.getMappingName();
             return b.isCustomKey() ? "KEY:" + b.getCustomKeyCode() : b.getAction().name();
         }
 
@@ -899,6 +939,7 @@ public class ControllerLayoutScreen extends Screen {
             return switch (e.type()) {
                 case ACTION -> e.action().name();
                 case KEY -> "KEY:" + e.keyCode();
+                case MAPPING -> "MAP:" + e.mapping();
                 default -> "";
             };
         }
@@ -986,6 +1027,8 @@ public class ControllerLayoutScreen extends Screen {
                 }
                 case KEY -> cfg.setBinding(set, button,
                         copyFlags(new ActionBinding(e.keyCode(), e.text()), cur, cur.hasHaptic(), cur.hasRepeat()));
+                case MAPPING -> cfg.setBinding(set, button,
+                        copyFlags(ActionBinding.forMapping(e.mapping()), cur, cur.hasHaptic(), cur.hasRepeat()));
                 default -> { return; }
             }
             VirtualKeyboard.playClickSound();
@@ -1005,11 +1048,9 @@ public class ControllerLayoutScreen extends Screen {
 
         /** New binding {@code base} with haptic / repeat settings (repeat keeps old timings if there were any). */
         ActionBinding copyFlags(ActionBinding base, ActionBinding old, boolean haptic, boolean repeat) {
-            ActionBinding b = base.isCustomKey()
-                    ? new ActionBinding(base.getCustomKeyCode(), base.getCustomNickname())
-                    : new ActionBinding(base.getAction());
+            ActionBinding b = base.copyBase();
             b.withHaptic(haptic);
-            if (repeat) {
+            if (repeat && b.allowsRepeat()) {
                 int delay = old.hasRepeat() ? old.getRepeatDelayMs() : 400;
                 int rate = old.hasRepeat() ? old.getRepeatRateMs() : 100;
                 b.withRepeat(delay, rate);
@@ -1048,6 +1089,11 @@ public class ControllerLayoutScreen extends Screen {
                     case TOGGLE_HAPTIC -> text = "Haptik beim Drücken: " + (cur.hasHaptic() ? "An" : "Aus");
                     case TOGGLE_REPEAT -> text = "Gedrückt halten = wiederholen: " + (cur.hasRepeat() ? "An" : "Aus");
                     case KEY -> text = e.text() + " (" + ActionBinding.getKeyLabel(e.keyCode()) + ")";
+                    case MAPPING -> {
+                        net.minecraft.client.KeyMapping km = net.minecraft.client.KeyMapping.get(e.mapping());
+                        String bound = km == null || km.isUnbound() ? "nicht belegt" : km.getTranslatedKeyMessage().getString();
+                        text = e.text() + " (" + bound + ")";
+                    }
                     default -> text = e.text();
                 }
                 boolean isCurrent = !keyOf(e).isEmpty() && keyOf(e).equals(curKey);

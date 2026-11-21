@@ -93,3 +93,31 @@ processResources {
                "minecraft_version": project.property("minecraft_version")
     }
 }
+
+// ---------------------------------------------------------------------------
+// ./gradlew installToPrism  ->  build, remove every old SteamDeckEssentials jar
+// (also *.disabled / *.duplicate left by Prism) from the instance's mods folder
+// and copy the new jar there. Instance name: -PprismInstance=<name> (default 26.3).
+// Takes effect at the next game start.
+// ---------------------------------------------------------------------------
+tasks.register('installToPrism') {
+    group = 'distribution'
+    description = 'Replaces the mod jar in the Prism Launcher instance'
+    dependsOn tasks.named('jar')
+    def instance = project.findProperty('prismInstance') ?: '26.3'
+    def modsDir = new File(prismDir, "instances/${instance}/minecraft/mods")
+    def jarTask = tasks.named('jar')
+    doLast {
+        if (!modsDir.isDirectory()) throw new GradleException("Mods folder not found: ${modsDir}")
+        def newJar = jarTask.get().archiveFile.get().asFile
+        modsDir.listFiles()
+                .findAll { it.isFile() && it.name.startsWith('SteamDeckEssentials-') }
+                .each { old ->
+                    old.delete()
+                    logger.lifecycle("Removed ${old.name}")
+                }
+        def target = new File(modsDir, newJar.name)
+        java.nio.file.Files.copy(newJar.toPath(), target.toPath())
+        logger.lifecycle("Installed ${target.name} -> ${modsDir}")
+    }
+}

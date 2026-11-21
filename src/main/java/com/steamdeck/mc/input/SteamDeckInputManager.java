@@ -50,6 +50,8 @@ public class SteamDeckInputManager {
 
     // Previous states for edge detection per button
     private final Map<DeckButton, Boolean> prevButtonStates = new EnumMap<>(DeckButton.class);
+    /** Action set a button was pressed in while no screen was open (released with that binding). */
+    private final Map<DeckButton, ActionSet> heldInGameSet = new EnumMap<>(DeckButton.class);
 
     // Steam Input Hardware Bridge state (for L4, R4, L5, R5, L3/R3 Touch mapped to keyboard keys)
     private boolean bridgeL4Down = false;
@@ -78,7 +80,6 @@ public class SteamDeckInputManager {
     private static final long MENU_NAV_REPEAT_INTERVAL_MS = 130;
 
     private boolean sneakToggled = false;
-    private boolean isZooming = false;
     private int lastBowPullStage = -1;
     private int lastLowDurabilityItemSlot = -1;
     private long lastDeviceCheckTime = 0;
@@ -94,9 +95,6 @@ public class SteamDeckInputManager {
         }
     }
 
-    public boolean isZooming() {
-        return isZooming;
-    }
 
     public long getActiveGamepadHandle() {
         return activeGamepadHandle;
@@ -368,6 +366,12 @@ public class SteamDeckInputManager {
     public void poll(Minecraft client) {
         if (client == null) return;
 
+        // Minecraft in the background: the controller belongs to the desktop again
+        if (!updateWindowFocus(client)) {
+            ensureGamepadConnected(); // keep connect/disconnect detection (and its popup) alive
+            return;
+        }
+
         ensureGamepadConnected();
         this.currentActionSet = evaluateActionSet(client);
         if (this.currentActionSet == ActionSet.MENUS && this.sneakToggled) {
@@ -391,6 +395,35 @@ public class SteamDeckInputManager {
         }
     }
 
+    /** True while Minecraft has the window focus (or the option is off). */
+    private boolean inputFocused = true;
+
+    public boolean isInputFocused() {
+        return inputFocused;
+    }
+
+    /**
+     * Tracks the window focus. On losing it all held buttons are released, the trackpad pointer stops
+     * and the Steam Controller's lizard mode (mouse/keyboard emulation) is restored; on regaining it the
+     * mod takes the controller back. Returns whether controller input should be processed now.
+     */
+    private boolean updateWindowFocus(Minecraft client) {
+        boolean focused = !ModConfig.getInstance().releaseControllerWhenUnfocused
+                || (client.getWindow() != null && client.getWindow().isFocused());
+        if (focused == inputFocused) return focused;
+        inputFocused = focused;
+        if (!focused) {
+            releaseAllButtons();
+            stickMapper.resetKeys(client.options);
+            com.steamdeck.mc.gui.RadialMenuOverlay.getInstance().cancel();
+            SteamDeckEssentials.LOGGER.info("[INPUT] Minecraft im Hintergrund: Controller-Eingaben pausiert");
+        } else {
+            SteamDeckEssentials.LOGGER.info("[INPUT] Minecraft wieder im Vordergrund: Controller-Eingaben aktiv");
+        }
+        LizardMode.getInstance().setSuspended(!focused);
+        return focused;
+    }
+
     /**
      * Intercepts keyboard events sent from Steam Input representing back pedals (L4, R4, L5, R5).
      * Returns true if the key matches a bridge mapping and was processed as a controller button.
@@ -403,6 +436,10 @@ public class SteamDeckInputManager {
             if (configScreen.isListening()) {
                 return false;
             }
+        }
+        if (client != null && client.gui != null && client.gui.screen() instanceof com.steamdeck.mc.gui.ControllerLayoutScreen layout
+                && layout.isListeningForKey()) {
+            return false;
         }
 
         ModConfig config = ModConfig.getInstance();
@@ -554,7 +591,14 @@ public class SteamDeckInputManager {
             leftPadDpadWasDown = false;
             processButton(DeckButton.LEFT_TRACKPAD, hardLeft, client, set);
         }
-        if (!leftPadGrid) releaseTrackpadGrid(client, set);
+        if (!leftPadGrid) {
+            releaseTrackpadGrid(client, set);
+            // Grid editor in the configurator shows where the thumb is (hover only, no clicks)
+            if (isGridModeActive() && padPressure[0] >= 0.0f
+                    && client.gui != null && client.gui.screen() instanceof com.steamdeck.mc.gui.ControllerLayoutScreen) {
+                gridHoverCell = gridCellAt(padX[0], padY[0], gridHoverCell);
+            }
+        }
         // SDL 3.4 mapping for Steam Deck & Steam Controller 2026 (libsdl-org/SDL #15601, #15612):
         //   TOUCHPAD = left pad click, MISC2 = right pad click, MISC3 = left stick touch,
         //   MISC4 = right stick touch, MISC1 = QAM, MISC5/6 = grip sense (Steam Controller only)
@@ -688,7 +732,6 @@ public class SteamDeckInputManager {
         activeHotbarDirection = 0;
         activeDpadNavButton = null;
         menuShiftHeld = false;
-        isZooming = false;
         leftPadDpadWasDown = false;
         padPressureClick[0] = padPressureClick[1] = false;
         padPressure[0] = padPressure[1] = -1.0f;
@@ -712,6 +755,29 @@ public class SteamDeckInputManager {
                 && !releasingAll) {
             com.steamdeck.mc.power.HapticFeedbackManager.getInstance()
                     .triggerTrackpadClickHaptic(button == DeckButton.RIGHT_TRACKPAD, isDown);
+        }
+
+        // A button pressed in-game keeps its in-game binding until it is released, even if a screen opens
+        // or the action set changes meanwhile (e.g. hold A = jump, then draw a bow -> AIMING). Before, the
+        // release went to the new set's binding and the original key (jump, attack, zoom, custom key) stuck.
+        boolean screenNow = client.gui != null && client.gui.screen() != null;
+        if (isDown && !wasDown) {
+            if (screenNow) heldInGameSet.remove(button);
+            else heldInGameSet.put(button, set);
+        } else if (wasDown) {
+            ActionSet pressedSet = heldInGameSet.get(button);
+            if (!isDown) heldInGameSet.remove(button);
+            if (pressedSet != null && (pressedSet != set || screenNow)) {
+                if (!isDown) {
+                    ActionBinding pressed = ModConfig.getInstance().getBinding(pressedSet, button);
+                    if (pressed.getAction() != DeckAction.NONE) {
+                        // same context as the press (no screen), so MOUSE_* actions release attack/use again
+                        executeBinding(pressed, false, true, client, false, false);
+                    }
+                    repeatState.remove(button);
+                }
+                return; // while still held in the new context: no new action
+            }
         }
 
         // Virtual Keyboard Dual-Trackpad / Dual-Cursor Typing
@@ -750,6 +816,13 @@ public class SteamDeckInputManager {
                     int dx = (button == DeckButton.DPAD_LEFT) ? -1 : (button == DeckButton.DPAD_RIGHT ? 1 : 0);
                     int dy = (button == DeckButton.DPAD_UP) ? -1 : (button == DeckButton.DPAD_DOWN ? 1 : 0);
                     handleDpadMenuNavigation(client, button, dx, dy, isDown, wasDown);
+                } else if (button == DeckButton.RIGHT_TRACKPAD && isNativeTrackpadActive(ModConfig.getInstance())
+                        && client.getWindow() != null) {
+                    // Pad click = real mouse click where the trackpad pointer is (footer, tabs, outside popups)
+                    if (isDown != wasDown) {
+                        client.mouseHandler.onButton(client.getWindow().handle(),
+                                new MouseButtonInfo(SDLMouse.SDL_BUTTON_LEFT, 0), isDown ? 1 : 0);
+                    }
                 } else if (isDown && !wasDown) {
                     layoutScreen.onControllerButton(button);
                 }
@@ -836,13 +909,9 @@ public class SteamDeckInputManager {
         if (binding.isCustomKey()) {
             int keyCode = binding.getCustomKeyCode();
             try {
-                com.mojang.blaze3d.platform.InputConstants.Key key = com.mojang.blaze3d.platform.InputConstants.Type.KEYBOARD.getOrCreate(keyCode);
-                if (!(repeat && !isDown)) {
-                    KeyMapping.set(key, isDown);
-                }
-                if (isDown && !wasDown) {
-                    KeyMapping.click(key);
-                }
+                // Exactly like a real keyboard: vanilla's KeyboardHandler decides what the key does (it sets
+                // and clicks key mappings only when no screen is open). Setting them here as well counted
+                // every press twice in-game and let keys act "through" open menus.
                 if (client.keyboardHandler != null && client.getWindow() != null && isDown != wasDown) {
                     if (repeat && !isDown) {
                         // a synthetic repeat sends one "repeat" key event (action 2) instead of release+press
@@ -857,21 +926,31 @@ public class SteamDeckInputManager {
             return;
         }
 
+        if (binding.isMapping()) {
+            // Minecraft / other mods' key mapping (e.g. a zoom mod): pressed like its own key would be
+            KeyMapping mapping = KeyMapping.get(binding.getMappingName());
+            if (mapping != null) {
+                if (repeat && !isDown) return; // repeat = one extra press, see processButton
+                pressMapping(client, mapping, isDown, repeat ? false : wasDown, hasScreen);
+            }
+            return;
+        }
+
         DeckAction action = binding.getAction();
 
         switch (action) {
             case RADIAL_MENU_CYCLE -> {
-                if (isDown && !wasDown) {
+                if (isDown && !wasDown && !hasScreen) {
                     com.steamdeck.mc.gui.RadialMenuOverlay.getInstance().cyclePage();
                 }
             }
-            case JUMP -> setKeybindState(client.options.keyJump, isDown, wasDown);
-            case ATTACK -> setKeybindState(client.options.keyAttack, isDown, wasDown);
-            case USE -> setKeybindState(client.options.keyUse, isDown, wasDown);
-            case DROP -> setKeybindState(client.options.keyDrop, isDown, wasDown);
-            case INVENTORY -> setKeybindState(client.options.keyInventory, isDown, wasDown);
-            case SWAP_OFFHAND -> setKeybindState(client.options.keySwapOffhand, isDown, wasDown);
-            case SPRINT -> setKeybindState(client.options.keySprint, isDown, wasDown);
+            case JUMP -> pressMapping(client, client.options.keyJump, isDown, wasDown, hasScreen);
+            case ATTACK -> pressMapping(client, client.options.keyAttack, isDown, wasDown, hasScreen);
+            case USE -> pressMapping(client, client.options.keyUse, isDown, wasDown, hasScreen);
+            case DROP -> pressMapping(client, client.options.keyDrop, isDown, wasDown, hasScreen);
+            case INVENTORY -> pressMapping(client, client.options.keyInventory, isDown, wasDown, hasScreen);
+            case SWAP_OFFHAND -> pressMapping(client, client.options.keySwapOffhand, isDown, wasDown, hasScreen);
+            case SPRINT -> pressMapping(client, client.options.keySprint, isDown, wasDown, hasScreen);
             case SNEAK -> {
                 if (hasScreen) {
                     menuShiftHeld = isDown; // held Shift in inventories: clicks become shift-clicks
@@ -886,34 +965,42 @@ public class SteamDeckInputManager {
                 if (isDown && !wasDown) scrollOnce(client, hasScreen, -1);
             }
             case SNEAK_TOGGLE -> {
-                if (isDown && !wasDown) {
+                // A toggle key does nothing in menus in vanilla either
+                if (isDown && !wasDown && !hasScreen) {
                     sneakToggled = !sneakToggled;
                     client.options.keyShift.setDown(sneakToggled);
                 }
             }
-            case ZOOM -> {
-                this.isZooming = isDown;
-            }
-            case PICK_BLOCK -> setKeybindState(client.options.keyPickItem, isDown, wasDown);
-            case TOGGLE_PERSPECTIVE -> setKeybindState(client.options.keyTogglePerspective, isDown, wasDown);
+            case PICK_BLOCK -> pressMapping(client, client.options.keyPickItem, isDown, wasDown, hasScreen);
+            case TOGGLE_PERSPECTIVE -> pressMapping(client, client.options.keyTogglePerspective, isDown, wasDown, hasScreen);
             case TOGGLE_DEBUG -> {
-                if (isDown && !wasDown && client.debugEntries != null) {
+                if (isDown && !wasDown && !hasScreen && client.debugEntries != null) {
                     client.debugEntries.toggleDebugOverlay();
                 }
             }
             case OPEN_CHAT -> {
-                if (isDown && !wasDown && client.gui != null) {
+                if (hasScreen) {
+                    pressMapping(client, client.options.keyChat, isDown, wasDown, true);
+                } else if (isDown && !wasDown && client.gui != null) {
                     client.gui.openChatScreen(ChatMethod.MESSAGE);
                 }
             }
             case HOTBAR_SLOT_1, HOTBAR_SLOT_2, HOTBAR_SLOT_3, HOTBAR_SLOT_4, HOTBAR_SLOT_5,
                  HOTBAR_SLOT_6, HOTBAR_SLOT_7, HOTBAR_SLOT_8, HOTBAR_SLOT_9 -> {
-                if (isDown && !wasDown && !hasScreen && client.player != null) {
+                if (hasScreen) {
+                    // In inventories the number keys swap the hovered item into that slot (vanilla)
+                    pressMapping(client, client.options.keyHotbarSlots[action.hotbarSlot()], isDown, wasDown, true);
+                } else if (isDown && !wasDown && client.player != null) {
                     client.player.getInventory().setSelectedSlot(action.hotbarSlot());
                 }
             }
-            case HOTBAR_PREV -> handleHotbarAction(client, -1, isDown, wasDown);
-            case HOTBAR_NEXT -> handleHotbarAction(client, 1, isDown, wasDown);
+            // There is no "next slot" key in vanilla menus (the mouse wheel scrolls the screen instead)
+            case HOTBAR_PREV -> {
+                if (!hasScreen || !isDown) handleHotbarAction(client, -1, isDown && !hasScreen, wasDown);
+            }
+            case HOTBAR_NEXT -> {
+                if (!hasScreen || !isDown) handleHotbarAction(client, 1, isDown && !hasScreen, wasDown);
+            }
             case PAUSE -> {
                 if (isDown && !wasDown) {
                     if (hasScreen) {
@@ -1198,6 +1285,29 @@ public class SteamDeckInputManager {
         com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerHotbarHaptic(direction);
     }
 
+    /**
+     * Presses a Minecraft key mapping. In-game the mapping is set directly (same as its key being held).
+     * With a screen open, the mapping's real key or mouse button is sent through vanilla's own input
+     * handlers instead, so the controller can do exactly what keyboard and mouse can in that screen and
+     * nothing more (no jumping or walking with a menu open; Q over a slot drops, E closes the inventory).
+     */
+    private void pressMapping(Minecraft client, KeyMapping mapping, boolean isDown, boolean wasDown, boolean hasScreen) {
+        if (!hasScreen) {
+            setKeybindState(mapping, isDown, wasDown);
+            return;
+        }
+        if (isDown == wasDown || client.getWindow() == null || mapping == null) return;
+        InputConstants.Key key = ((KeyMappingAccessor) mapping).getKey();
+        if (key == null || key.getValue() < 0) return;
+        long window = client.getWindow().handle();
+        if (key.getType() == InputConstants.Type.MOUSE) {
+            client.mouseHandler.onButton(window,
+                    new MouseButtonInfo(key.getValue(), menuShiftHeld ? InputConstants.MOD_SHIFT : 0), isDown ? 1 : 0);
+        } else if (client.keyboardHandler != null) {
+            client.keyboardHandler.keyPress(window, isDown ? 1 : 0, new KeyEvent(key.getValue(), key.getValue(), 0));
+        }
+    }
+
     private void setKeybindState(KeyMapping key, boolean isDown, boolean wasDown) {
         if (key == null) return;
         if (isDown != wasDown) {
@@ -1309,8 +1419,9 @@ public class SteamDeckInputManager {
         if (client == null || dt <= 0.0f) return;
         LocalPlayer player = client.player;
         boolean hasScreen = client.gui != null && client.gui.screen() != null;
-        if (player == null || hasScreen || !client.mouseHandler.isMouseGrabbed() || !hasController()) {
+        if (player == null || hasScreen || !client.mouseHandler.isMouseGrabbed() || !hasController() || !inputFocused) {
             cameraPad.reset();
+            cameraPendingX = cameraPendingY = 0.0;
             return;
         }
 
@@ -1854,7 +1965,7 @@ public class SteamDeckInputManager {
      * Per-frame high-refresh update (60/90 Hz) for smooth OSK dual-cursor reticles.
      */
     public void pollFrame(Minecraft client, float frameDeltaTicks) {
-        if (client == null) return;
+        if (client == null || !inputFocused) return;
         noteFrame(System.nanoTime());
         if (activeGamepadHandle != 0) {
             SDLGamepad.SDL_UpdateGamepads();

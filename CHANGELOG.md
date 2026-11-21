@@ -20,6 +20,37 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.0.0-beta.1
+
+**Neues Versionsschema:** Solange die Mod in Entwicklung ist, heißen die Versionen `1.0.0-beta.N` (SemVer, das Fabric versteht). Die bisherigen Stände 1.0.0 bis 1.5.1 bleiben unten als Entwicklungsgeschichte stehen.
+
+### Bugfixes (Bug-Suche mit Gemini, jeder Fund einzeln nachgeprüft)
+* **Linksklick im Konfigurator löschte die Belegung**, Rechtsklick öffnete die Liste. In 26.3/SDL3 ist Links = 1 und Rechts = 3.
+* **Hängende Tasten beim Wechsel von Action-Set oder Menü:** Eine im Spiel gedrückte Taste wird jetzt mit der Belegung losgelassen, mit der sie gedrückt wurde. Beispiele: A halten und dann den Bogen ziehen, RT halten und dann das Inventar öffnen, ein Raster-Feld halten und dann ein Menü öffnen.
+* Konfigurator „Taste auf der Tastatur drücken“: Die Steam-Input-Bridge schluckt `[ ] \ / F13 F14` nicht mehr.
+* Rechter Trackpad-Klick im Konfigurator ist ein echter Mausklick an der Cursor-Position (Fußleiste, Tabs, neben Popups).
+* Die AFK-Drosselung hebt die FPS nie über das normale Limit.
+* Lizard Mode: Kein falscher Fehler mehr beim Trennen.
+* „Zwischenwerte“: Kein Kamerasprung mehr nach einem Menü.
+* Raster-Editor: Die Daumenposition wird live angezeigt.
+
+### Neu
+* **Controller gehört dem Desktop, wenn Minecraft im Hintergrund ist** (`releaseControllerWhenUnfocused`, Standard an). Beim Verlust des Fensterfokus werden alle gehaltenen Tasten losgelassen. Tasten, Sticks, Trackpad-Zeiger, Kamera und Gyro werden ignoriert, und der Steam Controller bekommt seinen Lizard Mode zurück (Maus und Tastatur am Desktop). Mit dem Fokus übernimmt die Mod den Controller wieder. Verbinden- und Trennen-Hinweise laufen weiter.
+
+### Nur noch Vanilla-Fähigkeiten (Grundsatz: Die Mod ist eine Brücke, kein Hack)
+* **Keine Aktionen mehr durch offene Menüs.** Springen, Laufen, Sprinten, Schleichen-Toggle, Werfen, Zweithand, Perspektive, Hotbar-Wechsel, Debug und Radial-Menü wirkten bisher auch mit offenem Menü bzw. lösten danach nachträglich aus. Mit offenem Menü wird eine Aktion jetzt als echtes Tasten- oder Maus-Ereignis ihrer Minecraft-Belegung geschickt, und Vanilla entscheidet: Q über einem Slot wirft, E schließt das Inventar, Hotbar-Slot 1–9 tauscht das Item unter dem Cursor.
+* **Eigene Tastatur-Tasten** laufen nur noch über Vanillas Tastatur-Weg. Bisher wurden sie im Spiel doppelt gezählt und wirkten an Vanilla vorbei durch Menüs.
+* **Zoom entfernt** (4×-FOV ohne Item gibt es in Vanilla nicht). Die alte Belegung wird zu „Keine Aktion“, L1 ist im Standard frei. Für eine Zoom-Mod siehe „Minecraft-/Mod-Belegungen“.
+* **Kein „Gedrückt halten = wiederholen“** mehr für Angriff, Benutzen, Block wählen und alle Mausklicks, auch nicht für Belegungen auf Maustasten (das wäre ein Autoklicker). Für Tasten, Scrollen und Hotbar bleibt es erlaubt.
+
+### Neu
+* **Minecraft- und Mod-Belegungen direkt auf Controller-Tasten** (Aktion `KEY_MAPPING`, gespeichert als `MAP:<name>`). Die Auswahlliste im Konfigurator zeigt alle Einträge aus den Steuerungs-Optionen, nach Kategorie, Mods zuerst, jeweils mit ihrer aktuellen Taste. Die Mod drückt die Belegung selbst, das funktioniert also auch, wenn sie in den Optionen auf einer anderen oder gar keiner Taste liegt (z. B. der Zoom einer Zoom-Mod).
+
+### Entwicklung
+* `./gradlew installToPrism` baut die Mod, entfernt alle alten `SteamDeckEssentials-*`-Dateien (auch `.disabled`/`.duplicate`) aus dem Mods-Ordner der Prism-Instanz und kopiert die neue Jar hinein. Die Instanz lässt sich mit `-PprismInstance=<Name>` wählen, Standard ist `26.3`.
+
+---
+
 ## 🚀 Version 1.5.1
 
 ### Bugfixes

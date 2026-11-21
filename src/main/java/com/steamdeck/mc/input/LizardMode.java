@@ -62,10 +62,38 @@ public final class LizardMode {
         return INSTANCE;
     }
 
+    /** Controller the mod would like to own (worker thread only). */
+    private String wantedPath = null;
+    /** Minecraft is in the background: the controller belongs to the desktop (worker thread only). */
+    private boolean suspended = false;
+
+    /**
+     * Minecraft lost / regained the window focus. In the background the firmware gets its lizard mode
+     * back, so the controller works as mouse and keyboard on the desktop; on return it is switched off again.
+     */
+    public void setSuspended(boolean value) {
+        worker.execute(() -> {
+            if (suspended == value) return;
+            suspended = value;
+            if (value) {
+                closeAndRestore();
+            } else if (wantedPath != null) {
+                open(wantedPath);
+            }
+        });
+    }
+
     /** A native Steam Controller (2026) became the active controller; {@code hidrawPath} may be null. */
     public void onControllerActive(String hidrawPath) {
         if (hidrawPath == null) return;
         worker.execute(() -> {
+            wantedPath = hidrawPath;
+            if (!suspended) open(hidrawPath);
+        });
+    }
+
+    private void open(String hidrawPath) {
+        {
             if (!ModConfig.getInstance().disableLizardMode) return;
             if (hidrawPath.equals(openPath) && device != 0L) return;
             closeAndRestore();
@@ -85,12 +113,15 @@ public final class LizardMode {
             } catch (Throwable t) {
                 warnOnce(t.toString());
             }
-        });
+        }
     }
 
     /** The controller is gone or replaced: give the firmware its desktop behaviour back. */
     public void onControllerInactive() {
-        worker.execute(this::closeAndRestore);
+        worker.execute(() -> {
+            wantedPath = null;
+            closeAndRestore();
+        });
     }
 
     private void keepaliveTick() {
@@ -116,8 +147,9 @@ public final class LizardMode {
             keepalive = null;
         }
         if (device != 0L) {
-            send(CMD_SET_DEFAULT_MAPPINGS);
-            send(CMD_LOAD_DEFAULT_SETTINGS);
+            // The controller may already be gone (sleep, Bluetooth drop): failures here are expected
+            sendQuiet(CMD_SET_DEFAULT_MAPPINGS);
+            sendQuiet(CMD_LOAD_DEFAULT_SETTINGS);
             try {
                 SDLHIDAPI.SDL_hid_close(device);
             } catch (Throwable ignored) {}
@@ -131,6 +163,16 @@ public final class LizardMode {
         try {
             worker.submit(this::closeAndRestore).get(500, TimeUnit.MILLISECONDS);
         } catch (Throwable ignored) {}
+    }
+
+    private void sendQuiet(byte cmd) {
+        boolean w = warned;
+        warned = true; // suppress the warning for this call only
+        try {
+            send(cmd);
+        } finally {
+            warned = w;
+        }
     }
 
     private boolean send(byte cmd, int... payload) {

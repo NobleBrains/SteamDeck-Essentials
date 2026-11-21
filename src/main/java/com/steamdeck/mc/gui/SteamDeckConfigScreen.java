@@ -58,7 +58,7 @@ public class SteamDeckConfigScreen extends Screen {
             DeckAction.ATTACK, DeckAction.USE,
             DeckAction.JUMP, DeckAction.SNEAK,
             DeckAction.SNEAK_TOGGLE, DeckAction.SPRINT,
-            DeckAction.ZOOM, DeckAction.PICK_BLOCK,
+            DeckAction.PICK_BLOCK,
             DeckAction.DROP, DeckAction.INVENTORY,
             DeckAction.SWAP_OFFHAND, DeckAction.HOTBAR_PREV,
             DeckAction.HOTBAR_NEXT, DeckAction.TOGGLE_PERSPECTIVE,

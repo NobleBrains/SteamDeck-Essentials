@@ -10,21 +10,80 @@ public class ActionBinding {
     private final DeckAction action;
     private final int customKeyCode;
     private final String customNickname;
+    /** For KEY_MAPPING: the mapping's name, e.g. "key.jump" or "key.zoomify.zoom". */
+    private final String mappingName;
     // Steam-Input-style activator settings: hold to repeat (delay/rate in ms, 0 = off) and a haptic tick on press
     private int repeatDelayMs = 0;
     private int repeatRateMs = 0;
     private boolean haptic = false;
 
     public ActionBinding(DeckAction action) {
-        this.action = action != null ? action : DeckAction.NONE;
+        this.action = action != null && action != DeckAction.KEY_MAPPING ? action : DeckAction.NONE;
         this.customKeyCode = 0;
         this.customNickname = "";
+        this.mappingName = "";
     }
 
     public ActionBinding(int keyCode, String nickname) {
         this.action = DeckAction.CUSTOM_KEY;
         this.customKeyCode = keyCode;
         this.customNickname = (nickname != null && !nickname.isBlank()) ? nickname.trim() : "Taste " + getKeyLabel(keyCode);
+        this.mappingName = "";
+    }
+
+    private ActionBinding(String mappingName) {
+        this.action = DeckAction.KEY_MAPPING;
+        this.customKeyCode = 0;
+        this.customNickname = "";
+        this.mappingName = mappingName;
+    }
+
+    /** Presses a Minecraft (or other mod's) key mapping, whatever key it is bound to in the controls. */
+    public static ActionBinding forMapping(String mappingName) {
+        return new ActionBinding(mappingName);
+    }
+
+    public boolean isMapping() {
+        return action == DeckAction.KEY_MAPPING && !mappingName.isEmpty();
+    }
+
+    public String getMappingName() {
+        return mappingName;
+    }
+
+    /** Same target (action / key / mapping) without haptic and repeat settings. */
+    public ActionBinding copyBase() {
+        if (isCustomKey()) return new ActionBinding(customKeyCode, customNickname);
+        if (isMapping()) return forMapping(mappingName);
+        return new ActionBinding(action);
+    }
+
+    /**
+     * Hold-to-repeat is only allowed where a held keyboard key repeats too. Attack, use and mouse clicks
+     * (also mappings bound to a mouse button) would turn into an autoclicker.
+     */
+    public boolean allowsRepeat() {
+        if (action.isClickAction()) return false;
+        if (isMapping()) {
+            if (mappingName.equals("key.attack") || mappingName.equals("key.use") || mappingName.equals("key.pickItem")) return false;
+            try {
+                net.minecraft.client.KeyMapping km = net.minecraft.client.KeyMapping.get(mappingName);
+                if (km != null) {
+                    InputConstants.Key key = ((com.steamdeck.mc.mixin.KeyMappingAccessor) km).getKey();
+                    if (key != null && key.getType() == InputConstants.Type.MOUSE) return false;
+                }
+            } catch (Throwable ignored) {}
+        }
+        return true;
+    }
+
+    /** Translated name of the mapping (falls back to its raw name if the mod is not installed). */
+    public String getMappingLabel() {
+        try {
+            return net.minecraft.network.chat.Component.translatable(mappingName).getString();
+        } catch (Throwable t) {
+            return mappingName;
+        }
     }
 
     /** Hold-to-repeat like Steam's "hold_repeats": first repeat after {@code delayMs}, then every {@code rateMs}. */
@@ -41,7 +100,7 @@ public class ActionBinding {
     }
 
     public boolean hasRepeat() {
-        return repeatRateMs > 0;
+        return repeatRateMs > 0 && allowsRepeat();
     }
 
     public int getRepeatDelayMs() {
@@ -73,13 +132,15 @@ public class ActionBinding {
     }
 
     public String getDisplayLabel() {
-        String label = isCustomKey() ? customNickname + " (" + getKeyLabel(customKeyCode) + ")" : action.getLabel();
+        String label = isCustomKey() ? customNickname + " (" + getKeyLabel(customKeyCode) + ")"
+                : (isMapping() ? getMappingLabel() : action.getLabel());
         if (hasRepeat()) label += " ⟳";
         return label;
     }
 
     public String serialize() {
-        String base = isCustomKey() ? "KEY:" + customKeyCode + ":" + customNickname.replace("|", "/") : action.name();
+        String base = isCustomKey() ? "KEY:" + customKeyCode + ":" + customNickname.replace("|", "/")
+                : (isMapping() ? "MAP:" + mappingName.replace("|", "/") : action.name());
         if (hasRepeat()) base += "|repeat=" + repeatDelayMs + "," + repeatRateMs;
         if (haptic) base += "|haptic";
         return base;
@@ -107,6 +168,9 @@ public class ActionBinding {
     }
 
     private static ActionBinding deserializeBase(String serialized) {
+        if (serialized.startsWith("MAP:") && serialized.length() > 4) {
+            return forMapping(serialized.substring(4));
+        }
         if (serialized.startsWith("KEY:")) {
             try {
                 String[] parts = serialized.split(":", 3);

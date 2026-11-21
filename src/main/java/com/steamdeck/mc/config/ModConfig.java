@@ -123,6 +123,8 @@ public class ModConfig {
     public boolean trackpadInterpolation = false;
     /** Switch off the Steam Controller's keyboard/mouse emulation (B = Escape, pad = mouse) while in game. */
     public boolean disableLizardMode = true;
+    /** Ignore the controller while Minecraft is not the focused window (desktop gets it back). */
+    public boolean releaseControllerWhenUnfocused = true;
     /** Shows the live pad sample rate / frame rate line (debugging). */
     public boolean trackpadDebugOverlay = false;
     public boolean aimItemsOnly = true; // legacy, see gyroActivation
@@ -267,7 +269,7 @@ public class ModConfig {
                 case B -> DeckAction.DROP;
                 case X -> DeckAction.SWAP_OFFHAND;
                 case Y -> DeckAction.INVENTORY;
-                case LB -> DeckAction.ZOOM;
+                case LB -> DeckAction.NONE; // was the (non-vanilla) zoom
                 case RB -> DeckAction.PICK_BLOCK;
                 case LT -> DeckAction.USE;
                 case RT -> DeckAction.ATTACK;
@@ -294,7 +296,7 @@ public class ModConfig {
                 case B -> DeckAction.DROP;
                 case X -> DeckAction.SWAP_OFFHAND;
                 case Y -> DeckAction.INVENTORY;
-                case LB -> DeckAction.ZOOM;
+                case LB -> DeckAction.NONE; // was the (non-vanilla) zoom
                 case RB -> DeckAction.PICK_BLOCK;
                 case LT -> DeckAction.USE;
                 case RT -> DeckAction.ATTACK;

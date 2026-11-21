@@ -79,6 +79,8 @@ public class GyroManager {
 
         ModConfig config = ModConfig.getInstance();
         if (!config.enableGyroAiming || chosen.isZero()) return;
+        // Minecraft in the background: never turn the camera
+        if (!com.steamdeck.mc.input.SteamDeckInputManager.getInstance().isInputFocused()) return;
 
         // 1. Disabled while any screen/GUI is open
         if (client.gui != null && client.gui.screen() != null) return;
