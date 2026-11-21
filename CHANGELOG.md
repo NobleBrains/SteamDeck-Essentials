@@ -20,6 +20,18 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.5.1
+
+### Bugfixes
+* **B öffnete das Pausemenü statt der eigenen Belegung (Steam Controller 2026 ohne Steam).** Ursache war der „Lizard Mode“ der Firmware: Ohne Steam emuliert der Controller Tastatur und Maus (B = Escape, A = Enter, rechtes Pad = Systemmaus, Trigger = Klicks). Der Kernel-Treiber `hid_steam` lässt ihn standardmäßig an (`lizard_mode=Y`). Neu ist `input/LizardMode`: Solange der Controller nativ aktiv ist, werden die Firmware-Mappings gelöscht (Feature-Report `0x81`) und die Trackpad-Mausmodi abgeschaltet (`0x87` mit 0x07/0x08 = 0). Das wird jede Sekunde wiederholt, weil die Firmware sonst zurückfällt. Beim Trennen und beim Beenden werden die Defaults wiederhergestellt (`0x85`, `0x8E`), damit der Controller am Desktop wieder als Maus funktioniert. Die HID-Befehle laufen in einem Hintergrund-Thread. Abschaltbar über `disableLizardMode`.
+* Damit ist auch das **Ruckeln des Trackpad-Cursors** behoben: Die Firmware-Maus und der Zeiger der Mod haben gleichzeitig am Systemzeiger gezogen.
+
+### Neu
+* **Messwerte für das rechte Trackpad** (`trackpadDebugOverlay`, im Konfigurator unter „Rechtes Trackpad“): Pad-Samples pro Sekunde, Abstand, Jitter und Frames pro Sekunde.
+* **Zwischenwerte** (`trackpadInterpolation`, Standard aus): Zeiger und Kamera gleiten zwischen den Pad-Samples.
+
+---
+
 ## 🚀 Version 1.5.0
 
 ### Neu

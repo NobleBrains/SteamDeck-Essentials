@@ -53,7 +53,7 @@ public class ControllerLayoutScreen extends Screen {
     private static final int ART_Y = 24;
 
     /** Global (not per action set) modes shown as rows like Steam's "mode" lines. */
-    private enum Mode { LEFT_STICK, RIGHT_STICK, GYRO, LEFT_PAD, LEFT_PAD_GRID, RIGHT_PAD }
+    private enum Mode { LEFT_STICK, RIGHT_STICK, GYRO, LEFT_PAD, LEFT_PAD_GRID, RIGHT_PAD, PAD_SMOOTH, PAD_DEBUG }
 
     /** side: 0 = left column (right aligned), 1 = right column, 2 = bottom section */
     private record Item(DeckButton button, Mode mode, int x, int y, int w, int h, int side) {
@@ -105,7 +105,7 @@ public class ControllerLayoutScreen extends Screen {
         column(1, 30, null, DeckButton.RT, DeckButton.RB);
         column(1, 60, null, DeckButton.R4, DeckButton.R5);
         column(1, 90, null, DeckButton.START);
-        column(1, 108, "Rechtes Trackpad", DeckButton.RIGHT_TRACKPAD, Mode.RIGHT_PAD);
+        column(1, 108, "Rechtes Trackpad", DeckButton.RIGHT_TRACKPAD, Mode.RIGHT_PAD, Mode.PAD_SMOOTH, Mode.PAD_DEBUG);
         // Bottom: five sections
         bottom(0, "Linker Stick", Mode.LEFT_STICK, DeckButton.L3, DeckButton.LEFT_STICK_TOUCH);
         bottom(1, "Steuerkreuz", DeckButton.DPAD_UP, DeckButton.DPAD_DOWN, DeckButton.DPAD_LEFT, DeckButton.DPAD_RIGHT);
@@ -171,6 +171,8 @@ public class ControllerLayoutScreen extends Screen {
             };
             case LEFT_PAD_GRID -> "Raster 3×3 belegen …";
             case RIGHT_PAD -> c.nativeTrackpadCamera ? "Kamera / Mauszeiger" : "Aus (Steam Input)";
+            case PAD_SMOOTH -> "Zwischenwerte: " + (c.trackpadInterpolation ? "An" : "Aus");
+            case PAD_DEBUG -> "Messwerte anzeigen: " + (c.trackpadDebugOverlay ? "An" : "Aus");
         };
     }
 
@@ -182,6 +184,8 @@ public class ControllerLayoutScreen extends Screen {
             case LEFT_PAD -> "A: Taste / Steuerkreuz (gedrückt = laufen) / Raster 3×3 (9 Felder, Klick löst aus)";
             case LEFT_PAD_GRID -> "A: die 9 Felder des linken Trackpads belegen (schaltet den Raster-Modus ein)";
             case RIGHT_PAD -> "A: Kamera/Mauszeiger ohne Steam Input an/aus";
+            case PAD_SMOOTH -> "A: Zeiger & Kamera gleiten zwischen den Pad-Samples (flüssig bei jeder Bildrate)";
+            case PAD_DEBUG -> "A: zeigt unten Pad-Samples/s, Jitter und Frames/s (zum Wischen messen)";
         };
     }
 
@@ -315,7 +319,7 @@ public class ControllerLayoutScreen extends Screen {
             case LEFT_STICK -> DeckButton.LEFT_STICK_TOUCH;
             case RIGHT_STICK -> DeckButton.RIGHT_STICK_TOUCH;
             case LEFT_PAD, LEFT_PAD_GRID -> DeckButton.LEFT_TRACKPAD;
-            case RIGHT_PAD -> DeckButton.RIGHT_TRACKPAD;
+            case RIGHT_PAD, PAD_SMOOTH, PAD_DEBUG -> DeckButton.RIGHT_TRACKPAD;
             case GYRO -> null;
         };
     }
@@ -446,6 +450,8 @@ public class ControllerLayoutScreen extends Screen {
             };
             case LEFT_PAD_GRID -> { return; }
             case RIGHT_PAD -> c.nativeTrackpadCamera = !c.nativeTrackpadCamera;
+            case PAD_SMOOTH -> c.trackpadInterpolation = !c.trackpadInterpolation;
+            case PAD_DEBUG -> c.trackpadDebugOverlay = !c.trackpadDebugOverlay;
             case GYRO -> {
                 String[] order = {"AIM_ONLY", "ALWAYS", "TRACKPAD_TOUCH", "RIGHT_STICK_TOUCH"};
                 if (!c.enableGyroAiming) {

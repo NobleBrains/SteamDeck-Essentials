@@ -23,6 +23,9 @@ public class HudMixin {
         GyroManager.getInstance().update(Minecraft.getInstance());
         RadialMenuOverlay.getInstance().render(graphics, graphics.guiWidth(), graphics.guiHeight());
         com.steamdeck.mc.gui.TrackpadGridOverlay.render(graphics, graphics.guiWidth(), graphics.guiHeight());
+        if (Minecraft.getInstance().gui == null || Minecraft.getInstance().gui.screen() == null) {
+            com.steamdeck.mc.gui.TrackpadDebugOverlay.render(graphics, graphics.guiWidth(), graphics.guiHeight());
+        }
         PowerManager.getInstance().renderAfkOverlay(graphics, graphics.guiWidth(), graphics.guiHeight());
         Minecraft mc = Minecraft.getInstance();
         if (mc.gui == null || mc.gui.screen() == null) {

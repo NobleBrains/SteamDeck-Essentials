@@ -74,6 +74,11 @@ public final class TritonTrackpadHaptics {
         return devicePath != null;
     }
 
+    /** Resolved hidraw node of the active Steam Controller (2026), or null. */
+    public String getDevicePath() {
+        return devicePath;
+    }
+
     /**
      * One-shot haptic on a trackpad, parameterised like Steam Input: {@code intensity} 0..3 and a dB offset.
      * The gain byte follows steamclient (FINDINGS 6.2): {@code gain = dB - 12 + 3 * intensity} (intensity 1..3),

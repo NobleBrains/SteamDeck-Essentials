@@ -128,6 +128,7 @@ public class SteamDeckEssentials implements ClientModInitializer {
                 com.steamdeck.mc.gui.BatteryHudRenderer.renderMenuControllerHints(graphics, screen1, screen1.width, screen1.height);
                 com.steamdeck.mc.power.PowerManager.getInstance().renderAfkOverlay(graphics, screen1.width, screen1.height);
                 com.steamdeck.mc.gui.ControllerToast.getInstance().render(graphics, screen1.width, screen1.height);
+                com.steamdeck.mc.gui.TrackpadDebugOverlay.render(graphics, screen1.width, screen1.height);
             });
 
             // Handle touch / mouse click

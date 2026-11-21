@@ -183,6 +183,7 @@ public class SteamDeckInputManager {
                 activeKind = ControllerKind.NONE;
                 lastDeviceCheckTime = 0;
                 com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().clearDevice();
+                LizardMode.getInstance().onControllerInactive();
             } else {
                 SteamDeckEssentials.LOGGER.info("[INPUT] SDL Gamepad disconnected: ID {}", activeGamepadId);
                 com.steamdeck.mc.gui.ControllerToast.getInstance().onDisconnected(activeKind, activeDeviceName);
@@ -193,6 +194,7 @@ public class SteamDeckInputManager {
                 activeDeviceName = "None";
                 activeKind = ControllerKind.NONE;
                 com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().clearDevice();
+                LizardMode.getInstance().onControllerInactive();
             }
         }
 
@@ -234,8 +236,12 @@ public class SteamDeckInputManager {
                             SDLGamepad.SDL_GetGamepadPath(handle),
                             SDLGamepad.SDL_GetGamepadVendor(handle) & 0xFFFF,
                             SDLGamepad.SDL_GetGamepadProduct(handle) & 0xFFFF);
+                    // Firmware keyboard/mouse emulation off while Minecraft reads the controller natively
+                    LizardMode.getInstance().onControllerActive(
+                            com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().getDevicePath());
                 } else {
                     com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().clearDevice();
+                    LizardMode.getInstance().onControllerInactive();
                 }
                 return;
             }
@@ -1296,6 +1302,7 @@ public class SteamDeckInputManager {
      */
     public void pollCameraFrame(Minecraft client) {
         long now = System.nanoTime();
+        noteFrame(now);
         float dt = lastCameraFrameNanos == 0L ? 0.0f : Math.min(0.1f, (now - lastCameraFrameNanos) / 1_000_000_000.0f);
         lastCameraFrameNanos = now;
 
@@ -1335,15 +1342,38 @@ public class SteamDeckInputManager {
         // 2. Native right trackpad
         if (isNativeTrackpadActive(config)) {
             float[] d = readRightTrackpadDelta(cameraPad);
+            float scale = TRACKPAD_DEGREES_PER_PAD_WIDTH * config.trackpadSensitivity;
             if (d != null) {
                 markControllerActivity();
-                float scale = TRACKPAD_DEGREES_PER_PAD_WIDTH * config.trackpadSensitivity;
-                player.turn(d[0] * scale * TURN_UNITS_PER_DEGREE, d[1] * scale * TURN_UNITS_PER_DEGREE);
+                if (config.trackpadInterpolation) {
+                    // Spread each sample over one sample interval instead of turning in steps
+                    cameraPendingX += d[0] * scale;
+                    cameraPendingY += d[1] * scale;
+                    cameraSegmentEnd = now + (long) getPadSampleIntervalNanos();
+                } else {
+                    player.turn(d[0] * scale * TURN_UNITS_PER_DEGREE, d[1] * scale * TURN_UNITS_PER_DEGREE);
+                }
+            }
+            if (cameraPendingX != 0.0 || cameraPendingY != 0.0) {
+                double frameNanos = dt * 1_000_000_000.0;
+                double left = Math.max(0.0, cameraSegmentEnd - now);
+                double f = left <= 0.0 ? 1.0 : Math.min(1.0, frameNanos / (left + frameNanos));
+                double tx = cameraPendingX * f;
+                double ty = cameraPendingY * f;
+                cameraPendingX -= tx;
+                cameraPendingY -= ty;
+                if (Math.abs(cameraPendingX) < 1e-4 && Math.abs(cameraPendingY) < 1e-4) cameraPendingX = cameraPendingY = 0.0;
+                player.turn(tx * TURN_UNITS_PER_DEGREE, ty * TURN_UNITS_PER_DEGREE);
             }
         } else {
             cameraPad.reset();
+            cameraPendingX = cameraPendingY = 0.0;
         }
     }
+
+    private double cameraPendingX = 0.0;
+    private double cameraPendingY = 0.0;
+    private long cameraSegmentEnd = 0L;
 
     private boolean isNativeTrackpadActive(ModConfig config) {
         return config.nativeTrackpadCamera && activeKind.isNativeValve() && activeGamepadHandle != 0;
@@ -1411,6 +1441,7 @@ public class SteamDeckInputManager {
             // Keep lastNanos: the next real sample then gets the full time span since the previous one
             return null;
         }
+        notePadSample(now);
         double dt = Math.max(0.001, Math.min(0.1, (now - tracker.lastNanos) / 1_000_000_000.0));
         double vx = (x - tracker.lastX) / dt;
         double vy = (y - tracker.lastY) / dt;
@@ -1449,35 +1480,132 @@ public class SteamDeckInputManager {
         ModConfig config = ModConfig.getInstance();
         if (!isNativeTrackpadActive(config) || client.getWindow() == null) {
             cursorPad.reset();
+            cursorX = -1;
             return;
         }
         boolean wasTouching = cursorPad.wasDown;
         float[] d = readRightTrackpadDelta(cursorPad);
-        if (!cursorPad.wasDown) return;
-
+        long now = System.nanoTime();
         com.mojang.blaze3d.platform.Window win = client.getWindow();
+
+        if (!cursorPad.wasDown) {
+            // Finger lifted: finish the running segment so the pointer ends exactly on the target
+            if (cursorX >= 0 && (shownCursorX != cursorX || shownCursorY != cursorY)) {
+                warpCursor(client, win, cursorX, cursorY);
+            }
+            return;
+        }
         if (!wasTouching || cursorX < 0) {
             // Finger just landed: continue from the current OS cursor position
-            cursorX = client.mouseHandler.xpos();
-            cursorY = client.mouseHandler.ypos();
+            cursorX = shownCursorX = segStartX = client.mouseHandler.xpos();
+            cursorY = shownCursorY = segStartY = client.mouseHandler.ypos();
+            segStartNanos = now;
         }
-        if (d == null) return;
 
-        markControllerActivity();
-        // Mouse coordinates are SDL window points (getScreenWidth), NOT framebuffer pixels (getWidth):
-        // with display scaling (e.g. 1.4) the old pixel bounds let the cursor run far past the edge.
-        int w = Math.max(1, win.getScreenWidth());
-        int h = Math.max(1, win.getScreenHeight());
-        // Pointer acceleration like Steam's mouse mode: slow = precise, fast swipe = far
-        float speed = (float) Math.hypot(d[0], d[1]) / cursorPad.lastDt; // pad widths per second
-        double accel = 0.6 + Math.min(1.4, speed * 0.7);
-        double scale = w * config.trackpadSensitivity * accel;
-        cursorX = Math.max(0, Math.min(w - 1, cursorX + d[0] * scale));
-        cursorY = Math.max(0, Math.min(h - 1, cursorY + d[1] * scale));
+        if (d != null) {
+            markControllerActivity();
+            // Mouse coordinates are SDL window points (getScreenWidth), NOT framebuffer pixels (getWidth):
+            // with display scaling (e.g. 1.4) the old pixel bounds let the cursor run far past the edge.
+            int w = Math.max(1, win.getScreenWidth());
+            int h = Math.max(1, win.getScreenHeight());
+            // Pointer acceleration like Steam's mouse mode: slow = precise, fast swipe = far
+            float speed = (float) Math.hypot(d[0], d[1]) / cursorPad.lastDt; // pad widths per second
+            double accel = 0.6 + Math.min(1.4, speed * 0.7);
+            double scale = w * config.trackpadSensitivity * accel;
+            cursorX = Math.max(0, Math.min(w - 1, cursorX + d[0] * scale));
+            cursorY = Math.max(0, Math.min(h - 1, cursorY + d[1] * scale));
+            // New interpolation segment from where the pointer is shown now to the new target
+            segStartX = shownCursorX;
+            segStartY = shownCursorY;
+            segStartNanos = now;
+        }
 
-        SDLMouse.SDL_WarpMouseInWindow(win.handle(), (float) cursorX, (float) cursorY);
-        client.mouseHandler.onMove(win.handle(), cursorX, cursorY, 0.0, 0.0);
+        double x = cursorX;
+        double y = cursorY;
+        if (config.trackpadInterpolation) {
+            // The pad reports slower than the frame rate (e.g. ~50-60 Hz via Bluetooth). Instead of jumping
+            // once per sample, glide to the target over one sample interval: smooth at any frame rate,
+            // costs about one sample interval of latency.
+            double dur = getPadSampleIntervalNanos();
+            double t = Math.min(1.0, (now - segStartNanos) / dur);
+            x = segStartX + (cursorX - segStartX) * t;
+            y = segStartY + (cursorY - segStartY) * t;
+        }
+        if (x != shownCursorX || y != shownCursorY) {
+            warpCursor(client, win, x, y);
+        }
+    }
+
+    private void warpCursor(Minecraft client, com.mojang.blaze3d.platform.Window win, double x, double y) {
+        shownCursorX = x;
+        shownCursorY = y;
+        SDLMouse.SDL_WarpMouseInWindow(win.handle(), (float) x, (float) y);
+        client.mouseHandler.onMove(win.handle(), x, y, 0.0, 0.0);
         client.setLastInputType(InputType.MOUSE);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Trackpad sample-rate measurement (debug overlay) and interpolation timing
+    // ---------------------------------------------------------------------------------------
+
+    private double shownCursorX = -1;
+    private double shownCursorY = -1;
+    private double segStartX;
+    private double segStartY;
+    private long segStartNanos;
+
+    /** Smoothed time between two real samples of the right pad (only while the finger moves). */
+    private double padSampleIntervalEmaMs = 16.0;
+    private double padSampleJitterEmaMs = 0.0;
+    private long lastPadSampleNanos = 0L;
+    private int padSamplesInWindow = 0;
+    private int framesInWindow = 0;
+    private long statsWindowStart = 0L;
+    private long lastFrameNanos = 0L;
+    private int padSampleHz = 0;
+    private int frameHz = 0;
+
+    /** Called for every new right-pad sample (finger moved). */
+    private void notePadSample(long now) {
+        if (lastPadSampleNanos != 0L) {
+            double ms = (now - lastPadSampleNanos) / 1_000_000.0;
+            if (ms < 60.0) { // ignore pauses (finger resting), they are not the report rate
+                padSampleJitterEmaMs += (Math.abs(ms - padSampleIntervalEmaMs) - padSampleJitterEmaMs) * 0.1;
+                padSampleIntervalEmaMs += (ms - padSampleIntervalEmaMs) * 0.1;
+            }
+        }
+        lastPadSampleNanos = now;
+        padSamplesInWindow++;
+    }
+
+    /** Called once per rendered frame (HUD or screen overlay, de-duplicated). */
+    private void noteFrame(long now) {
+        if (now - lastFrameNanos < 2_000_000L) return; // HUD + screen hook in the same frame
+        lastFrameNanos = now;
+        framesInWindow++;
+        if (statsWindowStart == 0L) statsWindowStart = now;
+        if (now - statsWindowStart >= 1_000_000_000L) {
+            double secs = (now - statsWindowStart) / 1_000_000_000.0;
+            padSampleHz = (int) Math.round(padSamplesInWindow / secs);
+            frameHz = (int) Math.round(framesInWindow / secs);
+            padSamplesInWindow = 0;
+            framesInWindow = 0;
+            statsWindowStart = now;
+        }
+    }
+
+    /** Interpolation segment length: one measured sample interval, clamped to 4..40 ms. */
+    private double getPadSampleIntervalNanos() {
+        return Math.max(4.0, Math.min(40.0, padSampleIntervalEmaMs)) * 1_000_000.0;
+    }
+
+    /** One-line live measurement for the debug overlay. */
+    public String getTrackpadDebugLine() {
+        ModConfig c = ModConfig.getInstance();
+        return String.format(java.util.Locale.ROOT,
+                "Pad R: %d Samples/s (Ø %.1f ms, Jitter %.1f ms) • Frames: %d/s • Interpolation: %s",
+                padSampleHz, padSampleIntervalEmaMs, padSampleJitterEmaMs, frameHz,
+                c.trackpadInterpolation ? "an" : "aus");
     }
 
     /**
@@ -1727,6 +1855,7 @@ public class SteamDeckInputManager {
      */
     public void pollFrame(Minecraft client, float frameDeltaTicks) {
         if (client == null) return;
+        noteFrame(System.nanoTime());
         if (activeGamepadHandle != 0) {
             SDLGamepad.SDL_UpdateGamepads();
             updateTrackpadPressure();

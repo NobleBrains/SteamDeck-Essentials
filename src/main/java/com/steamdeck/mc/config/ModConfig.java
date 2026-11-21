@@ -119,6 +119,12 @@ public class ModConfig {
     public boolean invertGyroY = false;
     /** Fixes the mirrored left/right gyro of the Steam Controller 2026 under SDL (on by default). */
     public boolean tritonGyroYawCorrection = true;
+    /** Right trackpad pointer/camera glides between pad samples (smooth at any frame rate). */
+    public boolean trackpadInterpolation = false;
+    /** Switch off the Steam Controller's keyboard/mouse emulation (B = Escape, pad = mouse) while in game. */
+    public boolean disableLizardMode = true;
+    /** Shows the live pad sample rate / frame rate line (debugging). */
+    public boolean trackpadDebugOverlay = false;
     public boolean aimItemsOnly = true; // legacy, see gyroActivation
     // When the gyro turns the camera: "AIM_ONLY" (drawing bow/crossbow/trident/spyglass), "ALWAYS",
     // "TRACKPAD_TOUCH" (finger on either trackpad), "RIGHT_STICK_TOUCH" (capacitive right stick)
