@@ -36,7 +36,7 @@ public class HapticFeedbackManager {
      */
     public void triggerTrackpadClickHaptic(boolean rightPad, boolean pressed) {
         if (!ModConfig.getInstance().enableTrackpadClickHaptics) return;
-        if (!SteamDeckInputManager.getInstance().getActiveKind().isNativeValve()) return;
+        if (!SteamDeckInputManager.getInstance().getActiveKind().hasNativeTouchpad()) return;
         // Steam Controller 2026: the actuator inside the pressed trackpad (click on press, soft tick on release)
         // press: Click, intensity 3, 0 dB · release: Tick, intensity 2, -3 dB
         if (TritonTrackpadHaptics.getInstance().pulse(rightPad,

@@ -18,7 +18,9 @@ public final class ControllerArt {
         /** Steam Deck: wide handheld with a screen in the middle. */
         HANDHELD("Steam Deck"),
         /** Steam Controller (2026) and other gamepads: two grips, two trackpads. */
-        PAD("Steam Controller");
+        PAD("Steam Controller"),
+        /** Sony PS5 DualSense / DualSense Edge: center touchpad, symmetrical sticks. */
+        PS5("PS5 DualSense");
 
         private final String label;
 
@@ -90,10 +92,153 @@ public final class ControllerArt {
      */
     public static void draw(GuiGraphicsExtractor g, Variant variant, int x0, int y0, int bg, int accent,
                             Function<DeckButton, Integer> state) {
+        if (com.steamdeck.mc.config.ModConfig.getInstance().originalControllerArt) {
+            drawOriginal(g, variant, x0, y0, accent, state);
+            return;
+        }
         if (variant == Variant.HANDHELD) {
             drawHandheld(g, x0, y0, bg, accent, state);
         } else {
             drawPad(g, x0, y0, bg, accent, state);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Pixel-art versions of Steam's own controller outlines (controller_config_controller_*.svg,
+    // rasterised to white 1-bit pixels at the drawing size). Hot spots below are the button
+    // positions taken from the SVG geometry, in texture pixels.
+    // ------------------------------------------------------------------------------------------
+
+    private static final net.minecraft.resources.Identifier TEX_PAD =
+            net.minecraft.resources.Identifier.fromNamespaceAndPath("steamdeck_essentials", "textures/gui/controller_triton.png");
+    private static final net.minecraft.resources.Identifier TEX_DECK =
+            net.minecraft.resources.Identifier.fromNamespaceAndPath("steamdeck_essentials", "textures/gui/controller_deck.png");
+    private static final net.minecraft.resources.Identifier TEX_PS5 =
+            net.minecraft.resources.Identifier.fromNamespaceAndPath("steamdeck_essentials", "textures/gui/controller_ps5.png");
+
+    /** kind 0 = circle (a, b = centre, c = radius), 1 = rect (a, b, c, d = x, y, w, h). */
+    private record Hot(DeckButton button, int kind, int a, int b, int c, int d) {
+        static Hot circle(DeckButton b, int cx, int cy, int r) { return new Hot(b, 0, cx, cy, r, 0); }
+        static Hot rect(DeckButton b, int x, int y, int w, int h) { return new Hot(b, 1, x, y, w, h); }
+    }
+
+    /** Steam Controller (2026), texture 200 x 140 (SVG 456 x 320, scale 0.4386). */
+    private static final Hot[] PAD_HOTS = {
+            Hot.circle(DeckButton.L3, 71, 48, 15), Hot.circle(DeckButton.LEFT_STICK_TOUCH, 71, 48, 15),
+            Hot.circle(DeckButton.R3, 129, 48, 15), Hot.circle(DeckButton.RIGHT_STICK_TOUCH, 129, 48, 15),
+            Hot.circle(DeckButton.Y, 161, 22, 6), Hot.circle(DeckButton.B, 172, 33, 6),
+            Hot.circle(DeckButton.X, 150, 33, 6), Hot.circle(DeckButton.A, 161, 45, 6),
+            Hot.circle(DeckButton.STEAM, 100, 33, 6),
+            Hot.rect(DeckButton.LEFT_TRACKPAD, 43, 66, 38, 38), Hot.rect(DeckButton.RIGHT_TRACKPAD, 119, 66, 38, 38),
+            Hot.rect(DeckButton.DPAD_UP, 33, 18, 12, 9), Hot.rect(DeckButton.DPAD_DOWN, 33, 38, 12, 9),
+            Hot.rect(DeckButton.DPAD_LEFT, 24, 26, 9, 13), Hot.rect(DeckButton.DPAD_RIGHT, 45, 26, 9, 13),
+            Hot.rect(DeckButton.SELECT, 58, 17, 14, 6), Hot.rect(DeckButton.START, 128, 17, 14, 6),
+            Hot.rect(DeckButton.QAM, 91, 81, 18, 7),
+            Hot.rect(DeckButton.LB, 25, 1, 31, 9), Hot.rect(DeckButton.RB, 144, 1, 31, 9),
+    };
+
+    /** Steam Deck, texture 200 x 81 (SVG 449 x 181, scale 0.4454). */
+    private static final Hot[] DECK_HOTS = {
+            Hot.circle(DeckButton.L3, 31, 18, 6), Hot.circle(DeckButton.LEFT_STICK_TOUCH, 31, 18, 6),
+            Hot.circle(DeckButton.R3, 168, 18, 6), Hot.circle(DeckButton.RIGHT_STICK_TOUCH, 168, 18, 6),
+            Hot.circle(DeckButton.Y, 187, 8, 3), Hot.circle(DeckButton.X, 181, 14, 3),
+            Hot.circle(DeckButton.B, 193, 14, 3), Hot.circle(DeckButton.A, 187, 20, 3),
+            Hot.rect(DeckButton.LEFT_TRACKPAD, 18, 29, 22, 23), Hot.rect(DeckButton.RIGHT_TRACKPAD, 159, 29, 23, 23),
+            Hot.rect(DeckButton.DPAD_UP, 8, 6, 7, 6), Hot.rect(DeckButton.DPAD_DOWN, 8, 17, 7, 6),
+            Hot.rect(DeckButton.DPAD_LEFT, 4, 11, 6, 7), Hot.rect(DeckButton.DPAD_RIGHT, 15, 11, 6, 7),
+            Hot.rect(DeckButton.SELECT, 19, 5, 9, 4), Hot.rect(DeckButton.START, 172, 5, 9, 4),
+            Hot.rect(DeckButton.STEAM, 29, 55, 11, 5), Hot.rect(DeckButton.QAM, 159, 55, 11, 5),
+            Hot.rect(DeckButton.LB, 3, -1, 28, 4), Hot.rect(DeckButton.RB, 169, -1, 28, 4),
+    };
+
+    /** Sony PS5 DualSense, texture 200 x 135 (from controller_config_controller_ps5.png). */
+    private static final Hot[] PS5_HOTS = {
+            Hot.circle(DeckButton.L3, 71, 61, 13), Hot.circle(DeckButton.LEFT_STICK_TOUCH, 71, 61, 13),
+            Hot.circle(DeckButton.R3, 129, 61, 13), Hot.circle(DeckButton.RIGHT_STICK_TOUCH, 129, 61, 13),
+            Hot.circle(DeckButton.Y, 161, 22, 6), Hot.circle(DeckButton.B, 173, 34, 6),
+            Hot.circle(DeckButton.X, 149, 34, 6), Hot.circle(DeckButton.A, 161, 46, 6),
+            Hot.circle(DeckButton.STEAM, 100, 62, 6),
+            Hot.rect(DeckButton.RIGHT_TRACKPAD, 59, 4, 82, 38),
+            Hot.rect(DeckButton.DPAD_UP, 34, 20, 10, 9), Hot.rect(DeckButton.DPAD_DOWN, 34, 38, 10, 9),
+            Hot.rect(DeckButton.DPAD_LEFT, 25, 29, 9, 10), Hot.rect(DeckButton.DPAD_RIGHT, 44, 29, 9, 10),
+            Hot.rect(DeckButton.SELECT, 54, 15, 6, 9), Hot.rect(DeckButton.START, 140, 15, 6, 9),
+            Hot.rect(DeckButton.QAM, 96, 73, 8, 5),
+            Hot.rect(DeckButton.LB, 22, 1, 26, 8), Hot.rect(DeckButton.RB, 152, 1, 26, 8),
+    };
+
+    private static void drawOriginal(GuiGraphicsExtractor g, Variant variant, int x0, int y0, int accent,
+                                     Function<DeckButton, Integer> state) {
+        boolean deck = variant == Variant.HANDHELD;
+        boolean ps5 = variant == Variant.PS5;
+        int texW = 200;
+        int texH = deck ? 81 : (ps5 ? 135 : 140);
+        int tx = x0;
+        int ty = deck ? y0 + 40 : (ps5 ? y0 + 10 : y0 + 8);
+        int bg = 0xFF0E141B;
+
+        Hot[] hots = deck ? DECK_HOTS : (ps5 ? PS5_HOTS : PAD_HOTS);
+        net.minecraft.resources.Identifier tex = deck ? TEX_DECK : (ps5 ? TEX_PS5 : TEX_PAD);
+
+        // 1. Highlights underneath the outline (focused = accent, pressed = half accent)
+        for (Hot h : hots) {
+            int st = state.apply(h.button());
+            if (st == 0) continue;
+            int col = st == 2 ? accent : (accent & 0x00FFFFFF) | 0x77000000;
+            if (h.kind() == 0) circle(g, tx + h.a(), ty + h.b(), h.c(), col);
+            else roundRect(g, tx + h.a(), ty + h.b(), h.c(), h.d(), 2, col);
+        }
+
+        // 2. The outline itself (white pixels, transparent elsewhere)
+        g.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, tex,
+                tx, ty, 0.0f, 0.0f, texW, texH, texW, texH);
+
+        // 3. 3x3 grid on the left pad in grid mode (dual-pad controllers only)
+        if (!ps5 && leftGrid()) {
+            Hot pad = null;
+            for (Hot h : hots) if (h.button() == DeckButton.LEFT_TRACKPAD) pad = h;
+            for (int k = 1; k < 3 && pad != null; k++) {
+                g.fill(tx + pad.a() + pad.c() * k / 3, ty + pad.b() + 2, tx + pad.a() + pad.c() * k / 3 + 1, ty + pad.b() + pad.d() - 2, 0xFF8B929A);
+                g.fill(tx + pad.a() + 2, ty + pad.b() + pad.d() * k / 3, tx + pad.a() + pad.c() - 2, ty + pad.b() + pad.d() * k / 3 + 1, 0xFF8B929A);
+            }
+        }
+
+        // 3b. Live finger position dot on touched trackpad(s)
+        var input = com.steamdeck.mc.input.SteamDeckInputManager.getInstance();
+        for (int side = 0; side < 2; side++) {
+            if (ps5 && side == 0) continue;
+            if (!input.isTrackpadTouched(side)) continue;
+            DeckButton padBtn = side == 0 ? DeckButton.LEFT_TRACKPAD : DeckButton.RIGHT_TRACKPAD;
+            for (Hot h : hots) {
+                if (h.button() == padBtn) {
+                    int fx = tx + h.a() + 2 + Math.round(input.getTrackpadX(side) * Math.max(1, h.c() - 4));
+                    int fy = ty + h.b() + 2 + Math.round(input.getTrackpadY(side) * Math.max(1, h.d() - 4));
+                    circle(g, fx, fy, 3, accent);
+                    circle(g, fx, fy, 1, 0xFFFFFFFF);
+                    break;
+                }
+            }
+        }
+
+        // 4. Inputs not visible from the front: triggers above, back buttons below (own small tabs)
+        if (deck) {
+            part(g, tx + 6, ty - 8, 22, 5, 2, state.apply(DeckButton.LT), accent, bg);
+            part(g, tx + 172, ty - 8, 22, 5, 2, state.apply(DeckButton.RT), accent, bg);
+            part(g, tx + 28, ty + 83, 9, 5, 2, state.apply(DeckButton.L5), accent, bg);
+            part(g, tx + 39, ty + 83, 9, 5, 2, state.apply(DeckButton.L4), accent, bg);
+            part(g, tx + 152, ty + 83, 9, 5, 2, state.apply(DeckButton.R4), accent, bg);
+            part(g, tx + 163, ty + 83, 9, 5, 2, state.apply(DeckButton.R5), accent, bg);
+        } else if (ps5) {
+            part(g, tx + 23, ty - 7, 24, 5, 2, state.apply(DeckButton.LT), accent, bg);
+            part(g, tx + 153, ty - 7, 24, 5, 2, state.apply(DeckButton.RT), accent, bg);
+            part(g, tx + 42, ty + 137, 10, 5, 2, state.apply(DeckButton.L4), accent, bg);
+            part(g, tx + 148, ty + 137, 10, 5, 2, state.apply(DeckButton.R4), accent, bg);
+        } else {
+            part(g, tx + 28, ty - 7, 25, 5, 2, state.apply(DeckButton.LT), accent, bg);
+            part(g, tx + 147, ty - 7, 25, 5, 2, state.apply(DeckButton.RT), accent, bg);
+            part(g, tx + 20, ty + 142, 9, 5, 2, state.apply(DeckButton.L5), accent, bg);
+            part(g, tx + 31, ty + 142, 9, 5, 2, state.apply(DeckButton.L4), accent, bg);
+            part(g, tx + 160, ty + 142, 9, 5, 2, state.apply(DeckButton.R4), accent, bg);
+            part(g, tx + 171, ty + 142, 9, 5, 2, state.apply(DeckButton.R5), accent, bg);
         }
     }
 
@@ -196,9 +341,11 @@ public final class ControllerArt {
         trackpad(g, bx + 24, by + 40, 26, 26, state.apply(DeckButton.LEFT_TRACKPAD), accent, bg, leftGrid());
         trackpad(g, bx + bw - 50, by + 40, 26, 26, state.apply(DeckButton.RIGHT_TRACKPAD), accent, bg);
 
-        // View / Menu next to the screen
+        // View / Menu next to the screen, Steam / QAM below it
         part(g, bx + 50, by + 6, 6, 5, 1, state.apply(DeckButton.SELECT), accent, bg);
         part(g, bx + bw - 56, by + 6, 6, 5, 1, state.apply(DeckButton.START), accent, bg);
+        part(g, bx + 53, by + 62, 8, 6, 2, state.apply(DeckButton.STEAM), accent, bg);
+        part(g, bx + bw - 61, by + 62, 8, 6, 2, state.apply(DeckButton.QAM), accent, bg);
     }
 
     private static void drawPad(GuiGraphicsExtractor g, int x0, int y0, int bg, int accent,
@@ -236,6 +383,8 @@ public final class ControllerArt {
 
         part(g, cx - 14, y0 + 44, 8, 5, 1, state.apply(DeckButton.SELECT), accent, bg);
         part(g, cx + 6, y0 + 44, 8, 5, 1, state.apply(DeckButton.START), accent, bg);
+        part(g, cx - 5, y0 + 54, 10, 8, 3, state.apply(DeckButton.STEAM), accent, bg);
+        part(g, cx - 4, y0 + 66, 8, 5, 1, state.apply(DeckButton.QAM), accent, bg);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -246,6 +395,11 @@ public final class ControllerArt {
 
     /** Draws the glyph of a physical input at (x, y). */
     public static void glyph(GuiGraphicsExtractor g, Font font, DeckButton b, int x, int y) {
+        glyph(g, font, b, x, y, false);
+    }
+
+    /** Draws the glyph of a physical input at (x, y), optionally with PlayStation face symbols. */
+    public static void glyph(GuiGraphicsExtractor g, Font font, DeckButton b, int x, int y, boolean playstation) {
         int fg = 0xFFFFFFFF;
         int ink = 0xFF0E141B;
         if (b.gridIndex() >= 0) {
@@ -262,7 +416,13 @@ public final class ControllerArt {
         switch (b) {
             case A, B, X, Y -> {
                 circle(g, x + 5, y + 5, 6, fg);
-                centered(g, font, b.name(), x + 5, y + 2, ink);
+                String label = playstation ? switch (b) {
+                    case A -> "✕";
+                    case B -> "○";
+                    case X -> "□";
+                    default -> "△";
+                } : b.name();
+                centered(g, font, label, x + 5, y + 2, ink);
             }
             case DPAD_UP, DPAD_DOWN, DPAD_LEFT, DPAD_RIGHT -> {
                 g.fill(x + 4, y, x + 7, y + 11, 0xFF5A626C);
@@ -287,6 +447,12 @@ public final class ControllerArt {
                 roundRectOutline(g, x, y, 11, 11, 3, 1, fg, ink);
                 circle(g, x + 5, y + 5, 2, fg);
             }
+            case STEAM -> {
+                // Steam logo-like: ring with a dot and a short arm
+                ring(g, x + 5, y + 5, 6, 1, fg, ink);
+                circle(g, x + 7, y + 4, 2, fg);
+                g.fill(x + 2, y + 6, x + 6, y + 7, fg);
+            }
             case START -> {
                 roundRect(g, x, y + 1, 11, 9, 3, fg);
                 g.fill(x + 3, y + 3, x + 8, y + 4, ink);
@@ -309,6 +475,7 @@ public final class ControllerArt {
                     case R4 -> "R4";
                     case L5 -> "L5";
                     case R5 -> "R5";
+                    case QAM -> "...";
                     default -> "?";
                 };
                 roundRect(g, x - 2, y + 1, 15, 9, 3, fg);

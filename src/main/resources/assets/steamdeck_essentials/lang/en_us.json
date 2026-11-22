@@ -2,7 +2,6 @@
   "key.category.steamdeck_essentials": "Steam Deck Essentials",
   "key.steamdeck_essentials.osk_toggle": "Toggle On-Screen Keyboard",
   "key.steamdeck_essentials.osk_cycle_size": "Cycle Keyboard Size",
-  "key.steamdeck_essentials.quick_action": "Quick Action Bar",
   "steamdeck_essentials.battery.format": "BAT: %d%% (%sW, ~%s)",
   "steamdeck_essentials.battery.charging": "Charging",
   "steamdeck_essentials.battery.full": "Full",

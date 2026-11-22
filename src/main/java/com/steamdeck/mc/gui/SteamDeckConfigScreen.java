@@ -30,14 +30,6 @@ public class SteamDeckConfigScreen extends Screen {
         for (int i = 0; i < VISIBLE_TABS.length; i++) if (VISIBLE_TABS[i] == tab) return i;
         return 0;
     }
-    private DeckButton selectingButton = null;
-    private int modalSubTab = 0; // 0=Game Actions, 1=Mouse & Special
-
-    // Custom Key modal state
-    private boolean configuringCustomKey = false;
-    private boolean listeningForKey = false;
-    private int selectedCustomKey = 19; // Default SDL3 Scancode 'P' (InputConstants.KEY_P = 19)
-    private String customKeyName = "Minimap";
 
     // Bridge Key configuration state
     private DeckButton listeningForBridgeKey = null;
@@ -46,67 +38,13 @@ public class SteamDeckConfigScreen extends Screen {
     private long presetAppliedTime = 0L;
     private long layoutInstallStatusTime = 0L;
 
-    private static final DeckButton[] LEFT_COLUMN_BUTTONS = {
-            DeckButton.A, DeckButton.B, DeckButton.X, DeckButton.Y,
-            DeckButton.LB, DeckButton.RB, DeckButton.LT, DeckButton.RT,
-            DeckButton.L3, DeckButton.R3, DeckButton.START,
-            DeckButton.LEFT_STICK_TOUCH
-    };
-
-    private static final DeckButton[] RIGHT_COLUMN_BUTTONS = {
-            DeckButton.L4, DeckButton.R4, DeckButton.L5, DeckButton.R5,
-            DeckButton.LEFT_TRACKPAD, DeckButton.RIGHT_TRACKPAD,
-            DeckButton.DPAD_UP, DeckButton.DPAD_DOWN, DeckButton.DPAD_LEFT, DeckButton.DPAD_RIGHT,
-            DeckButton.SELECT,
-            DeckButton.RIGHT_STICK_TOUCH
-    };
-
-    private static final DeckAction[] GAME_ACTIONS = {
-            DeckAction.ATTACK, DeckAction.USE,
-            DeckAction.JUMP, DeckAction.SNEAK,
-            DeckAction.SNEAK_TOGGLE, DeckAction.SPRINT,
-            DeckAction.PICK_BLOCK,
-            DeckAction.DROP, DeckAction.INVENTORY,
-            DeckAction.SWAP_OFFHAND, DeckAction.HOTBAR_PREV,
-            DeckAction.HOTBAR_NEXT, DeckAction.TOGGLE_PERSPECTIVE,
-            DeckAction.TOGGLE_DEBUG, DeckAction.OPEN_CHAT,
-            DeckAction.PAUSE
-    };
-
-    private static final DeckAction[] MOUSE_AND_SPECIAL_ACTIONS = {
-            DeckAction.MOUSE_LEFT_CLICK, DeckAction.MOUSE_RIGHT_CLICK,
-            DeckAction.MOUSE_MIDDLE_CLICK, DeckAction.MOUSE_QUICK_MOVE,
-            DeckAction.MOUSE_SCROLL_UP, DeckAction.MOUSE_SCROLL_DOWN,
-            DeckAction.RADIAL_MENU_CYCLE, DeckAction.CLOSE_SCREEN,
-            DeckAction.CUSTOM_KEY, DeckAction.NONE
-    };
-
-    // Uses Minecraft 26.3 SDL3 Scancodes (InputConstants.KEY_M=16, KEY_B=5, KEY_V=25, KEY_C=6, KEY_L=15, KEY_P=19, KEY_T=23)
-    private static final String[][] PRESETS = {
-            {"Minimap", "M", "16"},
-            {"Wegpunkte", "B", "5"},
-            {"VoiceChat", "V", "25"},
-            {"Rucksack", "B", "5"},
-            {"Zoom", "C", "6"},
-            {"Quests", "L", "15"},
-            {"Mod-Menü", "P", "19"},
-            {"Chat", "T", "23"}
-    };
-
     public SteamDeckConfigScreen(Screen parent) {
         super(Component.literal("Steam Deck Controller"));
         this.parent = parent;
     }
 
     public boolean isListening() {
-        return this.listeningForKey || this.listeningForBridgeKey != null;
-    }
-
-    private ActionSet getSelectedActionSet() {
-        return switch (this.currentTab) {
-            case 1 -> ActionSet.MENUS;
-            default -> ActionSet.IN_GAME;
-        };
+        return this.listeningForBridgeKey != null;
     }
 
     @Override
@@ -156,9 +94,7 @@ public class SteamDeckConfigScreen extends Screen {
         }
 
         // Main Content Area
-        if (this.currentTab < 3) {
-            renderActionSetTab(graphics, font, mouseX, mouseY, getSelectedActionSet());
-        } else if (this.currentTab == 3) {
+        if (this.currentTab == 3) {
             renderEcoTab(graphics, font, mouseX, mouseY);
         } else if (this.currentTab == 4) {
             renderBridgeAndHardwareTab(graphics, font, mouseX, mouseY);
@@ -183,8 +119,8 @@ public class SteamDeckConfigScreen extends Screen {
             int presetX = (this.width - presetW) / 2;
             boolean presetHover = mouseX >= presetX && mouseX <= presetX + presetW && mouseY >= btnY && mouseY <= btnY + btnH;
             boolean confirming = System.currentTimeMillis() < this.presetConfirmUntil;
-            String presetLabel = System.currentTimeMillis() - this.presetAppliedTime < 3000L ? "✓ Layout übernommen"
-                    : (confirming ? "Nochmal: alles überschreiben?" : "📋 Workshop-Layout laden");
+            String presetLabel = System.currentTimeMillis() - this.presetAppliedTime < 3000L ? "✓ Workshop-Profil aktiv"
+                    : (confirming ? "Nochmal: Workshop-Profil?" : "📋 Workshop-Profil laden");
             graphics.fill(presetX, btnY, presetX + presetW, btnY + btnH, presetHover ? 0xFF2A3D52 : (confirming ? 0xFF4A3A10 : 0xFF1E2632));
             graphics.centeredText(font, font.plainSubstrByWidth(presetLabel, presetW - 4), presetX + presetW / 2, btnY + 6,
                     confirming ? 0xFFFFCC55 : 0xFF88CCFF);
@@ -199,72 +135,6 @@ public class SteamDeckConfigScreen extends Screen {
         graphics.fill(doneX, btnY, doneX + 1, btnY + btnH, 0xFF00E5FF);
         graphics.fill(doneX + btnW - 1, btnY, doneX + btnW, btnY + btnH, 0xFF00E5FF);
         graphics.centeredText(font, "Fertig", doneX + btnW / 2, btnY + 6, doneHover ? 0xFF00FFCC : -1);
-
-        // Action Selector / Custom Key Modal
-        if (this.selectingButton != null) {
-            if (this.configuringCustomKey) {
-                renderCustomKeyModal(graphics, font, mouseX, mouseY);
-            } else {
-                renderActionSelectorModal(graphics, font, mouseX, mouseY);
-            }
-        }
-    }
-
-    private void renderActionSetTab(GuiGraphicsExtractor graphics, Font font, int mouseX, int mouseY, ActionSet set) {
-        int rowSlot = Math.min(16, (this.height - 70) / LEFT_COLUMN_BUTTONS.length);
-        int rowH = rowSlot - 2;
-        int startY = 46;
-        int colW = (this.width - 24) / 2;
-        int leftColX = 8;
-        int rightColX = leftColX + colW + 8;
-
-        for (int i = 0; i < LEFT_COLUMN_BUTTONS.length; i++) {
-            DeckButton btn = LEFT_COLUMN_BUTTONS[i];
-            int y = startY + i * rowSlot;
-            renderButtonConfigRow(graphics, font, leftColX, y, colW, rowH, btn, set, mouseX, mouseY);
-        }
-
-        for (int i = 0; i < RIGHT_COLUMN_BUTTONS.length; i++) {
-            DeckButton btn = RIGHT_COLUMN_BUTTONS[i];
-            int y = startY + i * rowSlot;
-            renderButtonConfigRow(graphics, font, rightColX, y, colW, rowH, btn, set, mouseX, mouseY);
-        }
-    }
-
-    private void renderButtonConfigRow(GuiGraphicsExtractor graphics, Font font, int x, int y, int width, int height,
-                                       DeckButton btn, ActionSet set, int mouseX, int mouseY) {
-        graphics.fill(x, y, x + width, y + height, 0xAA161B22);
-
-        int badgeW = 74;
-        // Clean button name badge (never overlaps)
-        graphics.text(font, btn.getDisplayName(), x + 4, y + (height - 7) / 2, 0xFF00E5FF);
-
-        // Action Pill
-        int pillX = x + badgeW + 2;
-        int pillW = width - badgeW - 4;
-        int pillY = y + 1;
-        int pillH = height - 2;
-
-        ActionBinding binding = ModConfig.getInstance().getBinding(set, btn);
-        boolean hover = mouseX >= pillX && mouseX <= pillX + pillW && mouseY >= pillY && mouseY <= pillY + pillH;
-        int pillBg = hover ? 0xFF2A3D52 : (binding.isCustomKey() ? 0xFF1B3B36 : 0xFF1E2632);
-        int border = hover ? 0xFF00FFCC : (binding.isCustomKey() ? 0xFF00FFAA : 0x4400E5FF);
-
-        graphics.fill(pillX, pillY, pillX + pillW, pillY + pillH, pillBg);
-        graphics.fill(pillX, pillY, pillX + pillW, pillY + 1, border);
-        graphics.fill(pillX, pillY + pillH - 1, pillX + pillW, pillY + pillH, border);
-        graphics.fill(pillX, pillY, pillX + 1, pillY + pillH, border);
-        graphics.fill(pillX + pillW - 1, pillY, pillX + pillW, pillY + pillH, border);
-
-        // Truncate text cleanly if needed so it never bleeds outside pill
-        String fullText = binding.getDisplayLabel();
-        int maxTextW = pillW - 6;
-        String displayText = font.plainSubstrByWidth(fullText, maxTextW);
-        if (displayText.length() < fullText.length()) {
-            displayText = font.plainSubstrByWidth(fullText, Math.max(10, maxTextW - 6)) + "…";
-        }
-
-        graphics.centeredText(font, displayText, pillX + pillW / 2, pillY + (pillH - 7) / 2, hover ? 0xFF00FFCC : -1);
     }
 
     private void renderEcoTab(GuiGraphicsExtractor graphics, Font font, int mouseX, int mouseY) {
@@ -314,7 +184,7 @@ public class SteamDeckConfigScreen extends Screen {
     // ---------------------------------------------------------------------------------------
     // Tab 5: Trackpads (click pressure, live meter, haptic intensity) - Steam Input parity
     // ---------------------------------------------------------------------------------------
-    private static final int TRACKPAD_ROWS = 11;
+    private static final int TRACKPAD_ROWS = 13;
     private static final int PAD_STEP = 17;
     private static final int PAD_ROW_H = 15;
     private static final String[] HAPTIC_LEVEL_NAMES = {"Aus", "Sehr schwach", "Schwach", "Normal", "Stark", "Sehr stark"};
@@ -341,6 +211,9 @@ public class SteamDeckConfigScreen extends Screen {
     /** Applies a click (delta = 0) or -/+ (delta = -1/+1) on a trackpad-tab row. */
     private boolean adjustTrackpadSetting(int row, int delta) {
         ModConfig c = ModConfig.getInstance();
+        if (SteamDeckInputManager.getInstance().getActiveKind().isDualSense()) {
+            return adjustDualSenseTrackpadSetting(c, row, delta);
+        }
         switch (row) {
             case 0 -> c.leftTrackpadClickMode = toggleClickMode(c.leftTrackpadClickMode);
             case 1 -> {
@@ -377,6 +250,44 @@ public class SteamDeckConfigScreen extends Screen {
         return true;
     }
 
+    private boolean adjustDualSenseTrackpadSetting(ModConfig c, int row, int delta) {
+        switch (row) {
+            case 0 -> c.centerTrackpadMode = switch (c.centerTrackpadMode) {
+                case "CAMERA" -> "BUTTON";
+                case "BUTTON" -> "OFF";
+                default -> "CAMERA";
+            };
+            case 1 -> c.centerTrackpadMenuMouse = !c.centerTrackpadMenuMouse;
+            case 2 -> {
+                if (delta == 0) return false;
+                c.leftTriggerThreshold = Math.max(0.05f, Math.min(0.95f, Math.round((c.leftTriggerThreshold + delta * 0.05f) * 20f) / 20f));
+            }
+            case 4 -> {
+                if (delta == 0) return false;
+                c.rightTriggerThreshold = Math.max(0.05f, Math.min(0.95f, Math.round((c.rightTriggerThreshold + delta * 0.05f) * 20f) / 20f));
+            }
+            case 6 -> c.dualSenseTriggerMode = switch (c.dualSenseTriggerMode) {
+                case "WEAPON_CLICK" -> "RESISTANCE";
+                case "RESISTANCE" -> "OFF";
+                default -> "WEAPON_CLICK";
+            };
+            case 7 -> {
+                if (delta == 0) return false;
+                c.dualSenseTriggerResistance = Math.max(0.10f, Math.min(1.0f, Math.round((c.dualSenseTriggerResistance + delta * 0.05f) * 20f) / 20f));
+            }
+            case 8 -> c.adaptiveTriggerBlockHardness = !c.adaptiveTriggerBlockHardness;
+            case 9 -> c.adaptiveTriggerBowTension = !c.adaptiveTriggerBowTension;
+            case 10 -> c.adaptiveTriggerShield = !c.adaptiveTriggerShield;
+            case 11 -> c.adaptiveTriggerLowDurability = !c.adaptiveTriggerLowDurability;
+            case 12 -> c.enableTrackpadClickHaptics = !c.enableTrackpadClickHaptics;
+            default -> {
+                return false;
+            }
+        }
+        c.save();
+        return true;
+    }
+
     private void renderPadValueRow(GuiGraphicsExtractor graphics, Font font, int x, int y, int rowW, String label,
                                    int color, int mouseX, int mouseY) {
         graphics.fill(x, y, x + rowW, y + PAD_ROW_H, 0xAA161B22);
@@ -398,6 +309,59 @@ public class SteamDeckConfigScreen extends Screen {
         int x = (this.width - 340) / 2;
         int rowW = 340;
         int y = 46;
+
+        if (input.getActiveKind().isDualSense()) {
+            String padModeLabel = switch (c.centerTrackpadMode) {
+                case "CAMERA" -> "Kamera";
+                case "BUTTON" -> "Nur Taste";
+                default -> "Aus";
+            };
+            renderPadModeRow(graphics, font, x, y, rowW, 0, "Zentral-Touchpad (Im Spiel): " + padModeLabel, mouseX, mouseY);
+            y += PAD_STEP;
+            renderToggleOption(graphics, font, x, y, rowW, PAD_ROW_H, "Touchpad als Maus in Menüs", c.centerTrackpadMenuMouse, mouseX, mouseY);
+            y += PAD_STEP;
+
+            renderPadValueRow(graphics, font, x, y, rowW,
+                    String.format(java.util.Locale.ROOT, "L2-Trigger Schwelle: %.0f%%", c.leftTriggerThreshold * 100f),
+                    -1, mouseX, mouseY);
+            y += PAD_STEP;
+            renderPressureMeter(graphics, font, x, y, rowW, PAD_ROW_H, input.getTriggerValue(0), c.leftTriggerThreshold,
+                    input.getTriggerValue(0) >= c.leftTriggerThreshold);
+            y += PAD_STEP;
+
+            renderPadValueRow(graphics, font, x, y, rowW,
+                    String.format(java.util.Locale.ROOT, "R2-Trigger Schwelle: %.0f%%", c.rightTriggerThreshold * 100f),
+                    -1, mouseX, mouseY);
+            y += PAD_STEP;
+            renderPressureMeter(graphics, font, x, y, rowW, PAD_ROW_H, input.getTriggerValue(1), c.rightTriggerThreshold,
+                    input.getTriggerValue(1) >= c.rightTriggerThreshold);
+            y += PAD_STEP;
+
+            String dsModeLabel = switch (c.dualSenseTriggerMode) {
+                case "RESISTANCE" -> "Dauer-Widerstand";
+                case "OFF" -> "Aus";
+                default -> "Klickpunkt";
+            };
+            renderPadModeRow(graphics, font, x, y, rowW, 6, "Basis-Trigger (L2/R2): " + dsModeLabel, mouseX, mouseY);
+            y += PAD_STEP;
+            renderPadValueRow(graphics, font, x, y, rowW,
+                    String.format(java.util.Locale.ROOT, "Trigger-Widerstand: %.0f%%", c.dualSenseTriggerResistance * 100f),
+                    -1, mouseX, mouseY);
+            y += PAD_STEP;
+            renderToggleOption(graphics, font, x, y, rowW, PAD_ROW_H, "Block-Härte beim Abbauen (R2)", c.adaptiveTriggerBlockHardness, mouseX, mouseY);
+            y += PAD_STEP;
+            renderToggleOption(graphics, font, x, y, rowW, PAD_ROW_H, "Bogen / Armbrust / Dreizack Spannung (R2)", c.adaptiveTriggerBowTension, mouseX, mouseY);
+            y += PAD_STEP;
+            renderToggleOption(graphics, font, x, y, rowW, PAD_ROW_H, "Schild-Block Widerstand (L2)", c.adaptiveTriggerShield, mouseX, mouseY);
+            y += PAD_STEP;
+            renderToggleOption(graphics, font, x, y, rowW, PAD_ROW_H, "Werkzeug-Warnung (< 10% Haltbarkeit, R2)", c.adaptiveTriggerLowDurability, mouseX, mouseY);
+            y += PAD_STEP;
+            renderToggleOption(graphics, font, x, y, rowW, PAD_ROW_H, "Klick-Haptik (Touchpad)", c.enableTrackpadClickHaptics, mouseX, mouseY);
+            y += PAD_STEP;
+            graphics.centeredText(font, font.plainSubstrByWidth("L2/R2 ziehen: die Balken zeigen die aktuelle Druckintensität live.", rowW),
+                    x + rowW / 2, y + 1, 0xFF88CCFF);
+            return;
+        }
 
         for (int side = 0; side < 2; side++) {
             String mode = side == 0 ? c.leftTrackpadClickMode : c.rightTrackpadClickMode;
@@ -588,308 +552,11 @@ public class SteamDeckConfigScreen extends Screen {
         graphics.centeredText(font, text, x + w / 2, y + (h - 7) / 2, hover ? 0xFF00FFCC : -1);
     }
 
-    private void renderCustomKeyModal(GuiGraphicsExtractor graphics, Font font, int mouseX, int mouseY) {
-        graphics.fill(0, 0, this.width, this.height, 0xDD000000);
-
-        int modalW = Math.min(380, this.width - 20);
-        int modalH = 210;
-        int modalX = (this.width - modalW) / 2;
-        int modalY = (this.height - modalH) / 2;
-
-        graphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xFF0D1117);
-        graphics.fill(modalX, modalY, modalX + modalW, modalY + 1, 0xFF00FFAA);
-        graphics.fill(modalX, modalY + modalH - 1, modalX + modalW, modalY + modalH, 0xFF00FFAA);
-        graphics.fill(modalX, modalY, modalX + 1, modalY + modalH, 0xFF00FFAA);
-        graphics.fill(modalX + modalW - 1, modalY, modalX + modalW, modalY + modalH, 0xFF00FFAA);
-
-        String title = "Tastatur-Taste für " + this.selectingButton.getDisplayName() + ":";
-        graphics.centeredText(font, title, modalX + modalW / 2, modalY + 8, 0xFF00FFAA);
-
-        // Key Box (Click to Listen)
-        int keyBoxY = modalY + 24;
-        int keyBoxW = modalW - 20;
-        int keyBoxX = modalX + 10;
-        int keyBoxH = 22;
-
-        boolean keyHover = mouseX >= keyBoxX && mouseX <= keyBoxX + keyBoxW && mouseY >= keyBoxY && mouseY <= keyBoxY + keyBoxH;
-        int keyBg = this.listeningForKey ? 0xFF3D3A16 : (keyHover ? 0xFF2A3D52 : 0xFF161B22);
-        int keyBorder = this.listeningForKey ? 0xFFFFCC00 : 0xFF00FFAA;
-        graphics.fill(keyBoxX, keyBoxY, keyBoxX + keyBoxW, keyBoxY + keyBoxH, keyBg);
-        graphics.fill(keyBoxX, keyBoxY, keyBoxX + keyBoxW, keyBoxY + 1, keyBorder);
-        graphics.fill(keyBoxX, keyBoxY + keyBoxH - 1, keyBoxX + keyBoxW, keyBoxY + keyBoxH, keyBorder);
-        graphics.fill(keyBoxX, keyBoxY, keyBoxX + 1, keyBoxY + keyBoxH, keyBorder);
-        graphics.fill(keyBoxX + keyBoxW - 1, keyBoxY, keyBoxX + keyBoxW, keyBoxY + keyBoxH, keyBorder);
-
-        String keyText = this.listeningForKey
-                ? ">> DRÜCKE JETZT EINE TASTE... <<"
-                : "Taste: " + ActionBinding.getKeyLabel(this.selectedCustomKey) + " (Klicken zum Ändern)";
-        int keyTextColor = this.listeningForKey ? 0xFFFFCC00 : 0xFFFFFFFF;
-        graphics.centeredText(font, keyText, keyBoxX + keyBoxW / 2, keyBoxY + 7, keyTextColor);
-
-        // Current Nickname display
-        int nameY = keyBoxY + keyBoxH + 6;
-        graphics.text(font, "Spitzname: " + this.customKeyName, keyBoxX, nameY + 2, 0xFF88CCFF);
-
-        // Presets Heading
-        int presetsHeadingY = nameY + 15;
-        graphics.text(font, "Schnell-Presets (Taste & Name):", keyBoxX, presetsHeadingY, 0xFFAAAAAA);
-
-        // Presets Grid
-        int presetStartY = presetsHeadingY + 11;
-        int pCols = 2;
-        int pItemW = (modalW - 24) / pCols;
-        int pItemH = 15;
-
-        for (int i = 0; i < PRESETS.length; i++) {
-            String name = PRESETS[i][0];
-            String letter = PRESETS[i][1];
-            int c = i % pCols;
-            int r = i / pCols;
-            int px = modalX + 10 + c * (pItemW + 4);
-            int py = presetStartY + r * (pItemH + 3);
-
-            boolean hover = mouseX >= px && mouseX <= px + pItemW && mouseY >= py && mouseY <= py + pItemH;
-            graphics.fill(px, py, px + pItemW, py + pItemH, hover ? 0xFF2A3D52 : 0xFF1E2632);
-            graphics.centeredText(font, name + " (" + letter + ")", px + pItemW / 2, py + 4, hover ? 0xFF00FFCC : -1);
-        }
-
-        // Bottom Action Buttons
-        int bY = modalY + modalH - 22;
-        int bW = (modalW - 26) / 2;
-
-        // Cancel
-        int cX = modalX + 10;
-        boolean cHover = mouseX >= cX && mouseX <= cX + bW && mouseY >= bY && mouseY <= bY + 18;
-        graphics.fill(cX, bY, cX + bW, bY + 18, cHover ? 0xFF442222 : 0xFF221111);
-        graphics.centeredText(font, "Abbrechen", cX + bW / 2, bY + 5, cHover ? 0xFFFF7777 : 0xFFCC5555);
-
-        // Save
-        int sX = cX + bW + 6;
-        boolean sHover = mouseX >= sX && mouseX <= sX + bW && mouseY >= bY && mouseY <= bY + 18;
-        graphics.fill(sX, bY, sX + bW, bY + 18, sHover ? 0xFF0E5A35 : 0xFF0A3D24);
-        graphics.fill(sX, bY, sX + bW, bY + 1, 0xFF00FF88);
-        graphics.fill(sX, bY + 17, sX + bW, bY + 18, 0xFF00FF88);
-        graphics.fill(sX, bY, sX + 1, bY + 18, 0xFF00FF88);
-        graphics.fill(sX + bW - 1, bY, sX + bW, bY + 18, 0xFF00FF88);
-        graphics.centeredText(font, "Speichern & Zuweisen", sX + bW / 2, bY + 5, sHover ? 0xFF55FFAA : -1);
-    }
-
-    private void renderActionSelectorModal(GuiGraphicsExtractor graphics, Font font, int mouseX, int mouseY) {
-        graphics.fill(0, 0, this.width, this.height, 0xCC000000);
-
-        int modalW = Math.min(380, this.width - 16);
-        int modalH = Math.min(222, this.height - 16);
-        int modalX = (this.width - modalW) / 2;
-        int modalY = (this.height - modalH) / 2;
-
-        graphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xFF0D1117);
-        graphics.fill(modalX, modalY, modalX + modalW, modalY + 1, 0xFF00E5FF);
-        graphics.fill(modalX, modalY + modalH - 1, modalX + modalW, modalY + modalH, 0xFF00E5FF);
-        graphics.fill(modalX, modalY, modalX + 1, modalY + modalH, 0xFF00E5FF);
-        graphics.fill(modalX + modalW - 1, modalY, modalX + modalW, modalY + modalH, 0xFF00E5FF);
-
-        String title = "Aktion für " + this.selectingButton.getDisplayName() + " wählen:";
-        graphics.centeredText(font, title, modalX + modalW / 2, modalY + 6, 0xFF00E5FF);
-
-        // Sub-Tabs inside Modal: [🎮 Spiel-Aktionen]  [🖱️ Maus & Spezial]
-        int subTabY = modalY + 18;
-        int subTabH = 16;
-        int subTabW = (modalW - 20) / 2;
-
-        int tab0X = modalX + 8;
-        boolean t0Active = (this.modalSubTab == 0);
-        boolean t0Hover = mouseX >= tab0X && mouseX <= tab0X + subTabW && mouseY >= subTabY && mouseY <= subTabY + subTabH;
-        graphics.fill(tab0X, subTabY, tab0X + subTabW, subTabY + subTabH, t0Active ? 0xFF1E3A4A : (t0Hover ? 0xFF2A3D52 : 0xFF161B22));
-        graphics.fill(tab0X, subTabY + subTabH - 1, tab0X + subTabW, subTabY + subTabH, t0Active ? 0xFF00FFCC : 0x4400E5FF);
-        graphics.centeredText(font, "🎮 Spiel-Aktionen", tab0X + subTabW / 2, subTabY + 4, t0Active ? 0xFF00FFCC : -1);
-
-        int tab1X = tab0X + subTabW + 4;
-        boolean t1Active = (this.modalSubTab == 1);
-        boolean t1Hover = mouseX >= tab1X && mouseX <= tab1X + subTabW && mouseY >= subTabY && mouseY <= subTabY + subTabH;
-        graphics.fill(tab1X, subTabY, tab1X + subTabW, subTabY + subTabH, t1Active ? 0xFF1E3A4A : (t1Hover ? 0xFF2A3D52 : 0xFF161B22));
-        graphics.fill(tab1X, subTabY + subTabH - 1, tab1X + subTabW, subTabY + subTabH, t1Active ? 0xFF00FFCC : 0x4400E5FF);
-        graphics.centeredText(font, "🖱️ Maus & Spezial", tab1X + subTabW / 2, subTabY + 4, t1Active ? 0xFF00FFCC : -1);
-
-        // Actions Grid
-        DeckAction[] actions = (this.modalSubTab == 0) ? GAME_ACTIONS : MOUSE_AND_SPECIAL_ACTIONS;
-        int cols = 2;
-        int itemW = (modalW - 20) / cols;
-        int itemH = 15;
-        int startY = subTabY + subTabH + 4;
-
-        for (int i = 0; i < actions.length; i++) {
-            DeckAction action = actions[i];
-            int c = i % cols;
-            int r = i / cols;
-            int ax = modalX + 8 + c * (itemW + 4);
-            int ay = startY + r * (itemH + 3);
-
-            if (ay + itemH > modalY + modalH - 22) break;
-
-            boolean hover = mouseX >= ax && mouseX <= ax + itemW && mouseY >= ay && mouseY <= ay + itemH;
-            int bg = hover ? 0xFF2A3D52 : (action == DeckAction.CUSTOM_KEY ? 0xFF1B3B36 : 0xFF161B22);
-            int textCol = hover ? 0xFF00FFCC : (action == DeckAction.CUSTOM_KEY ? 0xFF00FFAA : -1);
-
-            graphics.fill(ax, ay, ax + itemW, ay + itemH, bg);
-            graphics.centeredText(font, action.getLabel(), ax + itemW / 2, ay + (itemH - 7) / 2, textCol);
-        }
-
-        // Cancel button
-        int closeBtnY = modalY + modalH - 20;
-        boolean closeHover = mouseX >= modalX + 8 && mouseX <= modalX + modalW - 8 && mouseY >= closeBtnY && mouseY <= closeBtnY + 16;
-        graphics.fill(modalX + 8, closeBtnY, modalX + modalW - 8, closeBtnY + 16, closeHover ? 0xFF442222 : 0xFF221111);
-        graphics.centeredText(font, "Abbrechen", modalX + modalW / 2, closeBtnY + 4, closeHover ? 0xFFFF7777 : 0xFFCC5555);
-    }
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         double mouseX = event.x();
         double mouseY = event.y();
-
-        // 1. If Modal is open, handle modal click
-        if (this.selectingButton != null) {
-            if (this.configuringCustomKey) {
-                // Handle Custom Key modal clicks
-                int modalW = Math.min(380, this.width - 20);
-                int modalH = 210;
-                int modalX = (this.width - modalW) / 2;
-                int modalY = (this.height - modalH) / 2;
-
-                int keyBoxY = modalY + 24;
-                int keyBoxW = modalW - 20;
-                int keyBoxX = modalX + 10;
-                int keyBoxH = 22;
-
-                // Click Key Box to listen
-                if (mouseX >= keyBoxX && mouseX <= keyBoxX + keyBoxW && mouseY >= keyBoxY && mouseY <= keyBoxY + keyBoxH) {
-                    this.listeningForKey = !this.listeningForKey;
-                    VirtualKeyboard.playClickSound();
-                    return true;
-                }
-
-                // Presets Click
-                int presetsHeadingY = keyBoxY + keyBoxH + 6 + 15;
-                int presetStartY = presetsHeadingY + 11;
-                int pCols = 2;
-                int pItemW = (modalW - 24) / pCols;
-                int pItemH = 15;
-
-                for (int i = 0; i < PRESETS.length; i++) {
-                    int c = i % pCols;
-                    int r = i / pCols;
-                    int px = modalX + 10 + c * (pItemW + 4);
-                    int py = presetStartY + r * (pItemH + 3);
-
-                    if (mouseX >= px && mouseX <= px + pItemW && mouseY >= py && mouseY <= py + pItemH) {
-                        try {
-                            this.selectedCustomKey = Integer.parseInt(PRESETS[i][2]);
-                            this.customKeyName = PRESETS[i][0];
-                            this.listeningForKey = false;
-                            VirtualKeyboard.playClickSound();
-                        } catch (Exception ignored) {}
-                        return true;
-                    }
-                }
-
-                // Bottom Buttons (Cancel & Save)
-                int bY = modalY + modalH - 22;
-                int bW = (modalW - 26) / 2;
-                int cX = modalX + 10;
-                int sX = cX + bW + 6;
-
-                // Cancel
-                if (mouseX >= cX && mouseX <= cX + bW && mouseY >= bY && mouseY <= bY + 18) {
-                    this.configuringCustomKey = false;
-                    this.listeningForKey = false;
-                    VirtualKeyboard.playClickSound();
-                    return true;
-                }
-
-                // Save & Assign
-                if (mouseX >= sX && mouseX <= sX + bW && mouseY >= bY && mouseY <= bY + 18) {
-                    ModConfig.getInstance().setBinding(getSelectedActionSet(), this.selectingButton,
-                            new ActionBinding(this.selectedCustomKey, this.customKeyName));
-                    this.configuringCustomKey = false;
-                    this.listeningForKey = false;
-                    this.selectingButton = null;
-                    VirtualKeyboard.playClickSound();
-                    return true;
-                }
-                return true;
-            }
-
-            // Normal Action Selector Modal
-            int modalW = Math.min(380, this.width - 16);
-            int modalH = Math.min(222, this.height - 16);
-            int modalX = (this.width - modalW) / 2;
-            int modalY = (this.height - modalH) / 2;
-
-            // Close Button
-            int closeBtnY = modalY + modalH - 20;
-            if (mouseX >= modalX + 8 && mouseX <= modalX + modalW - 8 && mouseY >= closeBtnY && mouseY <= closeBtnY + 16) {
-                this.selectingButton = null;
-                VirtualKeyboard.playClickSound();
-                return true;
-            }
-
-            // Sub-Tab Switcher Clicks
-            int subTabY = modalY + 18;
-            int subTabH = 16;
-            int subTabW = (modalW - 20) / 2;
-            int tab0X = modalX + 8;
-            int tab1X = tab0X + subTabW + 4;
-
-            if (mouseX >= tab0X && mouseX <= tab0X + subTabW && mouseY >= subTabY && mouseY <= subTabY + subTabH) {
-                this.modalSubTab = 0;
-                VirtualKeyboard.playClickSound();
-                return true;
-            }
-            if (mouseX >= tab1X && mouseX <= tab1X + subTabW && mouseY >= subTabY && mouseY <= subTabY + subTabH) {
-                this.modalSubTab = 1;
-                VirtualKeyboard.playClickSound();
-                return true;
-            }
-
-            // Action Items Clicks
-            DeckAction[] actions = (this.modalSubTab == 0) ? GAME_ACTIONS : MOUSE_AND_SPECIAL_ACTIONS;
-            int cols = 2;
-            int itemW = (modalW - 20) / cols;
-            int itemH = 15;
-            int startY = subTabY + subTabH + 4;
-
-            for (int i = 0; i < actions.length; i++) {
-                int c = i % cols;
-                int r = i / cols;
-                int ax = modalX + 8 + c * (itemW + 4);
-                int ay = startY + r * (itemH + 3);
-
-                if (ay + itemH > modalY + modalH - 22) break;
-
-                if (mouseX >= ax && mouseX <= ax + itemW && mouseY >= ay && mouseY <= ay + itemH) {
-                    DeckAction chosen = actions[i];
-                    if (chosen == DeckAction.CUSTOM_KEY) {
-                        ActionBinding currentBinding = ModConfig.getInstance().getBinding(getSelectedActionSet(), this.selectingButton);
-                        if (currentBinding.isCustomKey()) {
-                            this.selectedCustomKey = currentBinding.getCustomKeyCode();
-                            this.customKeyName = currentBinding.getCustomNickname();
-                        } else {
-                            this.selectedCustomKey = 19; // SDL3 Scancode 'P'
-                            this.customKeyName = "Taste P";
-                        }
-                        this.configuringCustomKey = true;
-                        this.listeningForKey = false;
-                        VirtualKeyboard.playClickSound();
-                        return true;
-                    }
-
-                    ModConfig.getInstance().setAction(getSelectedActionSet(), this.selectingButton, chosen);
-                    this.selectingButton = null;
-                    VirtualKeyboard.playClickSound();
-                    return true;
-                }
-            }
-            return true;
-        }
 
         // 2. Tab Bar Clicks (5 Tabs)
         int tabCount = TAB_COUNT;
@@ -913,10 +580,7 @@ public class SteamDeckConfigScreen extends Screen {
         int btnY = this.height - 22;
         if (mouseX >= 10 && mouseX <= 120 && mouseY >= btnY && mouseY <= btnY + btnH) {
             // Reset to defaults
-            if (this.currentTab < 3) {
-                ModConfig.getInstance().resetActionSetToDefaults(getSelectedActionSet());
-                VirtualKeyboard.playClickSound();
-            } else if (this.currentTab == 3) {
+            if (this.currentTab == 3) {
                 ModConfig cfg = ModConfig.getInstance();
                 cfg.enableDynamicAfkThrottle = true;
                 cfg.enableAfkScreenDimming = true;
@@ -983,42 +647,8 @@ public class SteamDeckConfigScreen extends Screen {
             return true;
         }
 
-        // 4. Action Set Row Clicks (Tabs 0, 1, 2)
-        if (this.currentTab < 3) {
-            int rowSlot = Math.min(16, (this.height - 70) / LEFT_COLUMN_BUTTONS.length);
-            int rowH = rowSlot - 2;
-            int startY = 46;
-            int colW = (this.width - 24) / 2;
-            int leftColX = 8;
-            int rightColX = leftColX + colW + 8;
-            int badgeW = 74;
-
-            for (int i = 0; i < LEFT_COLUMN_BUTTONS.length; i++) {
-                int y = startY + i * rowSlot;
-                int pillX = leftColX + badgeW + 2;
-                int pillW = colW - badgeW - 4;
-                if (mouseX >= pillX && mouseX <= pillX + pillW && mouseY >= y && mouseY <= y + rowH) {
-                    this.selectingButton = LEFT_COLUMN_BUTTONS[i];
-                    ActionBinding b = ModConfig.getInstance().getBinding(getSelectedActionSet(), this.selectingButton);
-                    this.modalSubTab = (b.isCustomKey() || b.getAction().name().startsWith("MOUSE_") || b.getAction() == DeckAction.CLOSE_SCREEN || b.getAction() == DeckAction.RADIAL_MENU_CYCLE) ? 1 : 0;
-                    VirtualKeyboard.playClickSound();
-                    return true;
-                }
-            }
-
-            for (int i = 0; i < RIGHT_COLUMN_BUTTONS.length; i++) {
-                int y = startY + i * rowSlot;
-                int pillX = rightColX + badgeW + 2;
-                int pillW = colW - badgeW - 4;
-                if (mouseX >= pillX && mouseX <= pillX + pillW && mouseY >= y && mouseY <= y + rowH) {
-                    this.selectingButton = RIGHT_COLUMN_BUTTONS[i];
-                    ActionBinding b = ModConfig.getInstance().getBinding(getSelectedActionSet(), this.selectingButton);
-                    this.modalSubTab = (b.isCustomKey() || b.getAction().name().startsWith("MOUSE_") || b.getAction() == DeckAction.CLOSE_SCREEN || b.getAction() == DeckAction.RADIAL_MENU_CYCLE) ? 1 : 0;
-                    VirtualKeyboard.playClickSound();
-                    return true;
-                }
-            }
-        } else if (this.currentTab == 5) {
+        // 4. Tab content clicks
+        if (this.currentTab == 5) {
             int row = trackpadRowAt(mouseX, mouseY);
             if (row >= 0) {
                 int x = (this.width - 340) / 2;
@@ -1231,39 +861,6 @@ public class SteamDeckConfigScreen extends Screen {
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.getWindow() == null) return;
 
-        if (this.selectingButton != null && !this.configuringCustomKey) {
-            DeckAction[] actions = (this.modalSubTab == 0) ? GAME_ACTIONS : MOUSE_AND_SPECIAL_ACTIONS;
-            int rows = (actions.length + 1) / 2;
-            this.navCol = Math.max(0, Math.min(1, this.navCol + dx));
-            this.navRow = Math.max(-1, Math.min(rows, this.navRow + dy));
-
-            int modalW = Math.min(380, this.width - 16);
-            int modalH = Math.min(222, this.height - 16);
-            int modalX = (this.width - modalW) / 2;
-            int modalY = (this.height - modalH) / 2;
-            int subTabY = modalY + 18;
-            int subTabH = 16;
-            int subTabW = (modalW - 20) / 2;
-
-            int targetX;
-            int targetY;
-            if (this.navRow == -1) {
-                targetX = modalX + 8 + this.navCol * (subTabW + 4) + subTabW / 2;
-                targetY = subTabY + subTabH / 2;
-            } else if (this.navRow == rows) {
-                targetX = modalX + modalW / 2;
-                targetY = modalY + modalH - 12;
-            } else {
-                int itemW = (modalW - 20) / 2;
-                int itemH = 15;
-                int startY = subTabY + subTabH + 4;
-                targetX = modalX + 8 + this.navCol * (itemW + 4) + itemW / 2;
-                targetY = startY + this.navRow * (itemH + 3) + itemH / 2;
-            }
-            warpCursorToGui(client, targetX, targetY);
-            return;
-        }
-
         // Trackpad tab: left/right on a value row changes the value directly
         if (this.currentTab == 5 && this.navRow >= 0 && this.navRow < TRACKPAD_ROWS && dx != 0 && dy == 0) {
             if (adjustTrackpadSetting(this.navRow, dx)) {
@@ -1272,9 +869,8 @@ public class SteamDeckConfigScreen extends Screen {
             return;
         }
 
-        int maxRows = (this.currentTab < 3) ? LEFT_COLUMN_BUTTONS.length
-                : (this.currentTab == 3 ? 10 : (this.currentTab == 5 ? TRACKPAD_ROWS : 7));
-        int maxCols = (this.currentTab < 3) ? 1 : 0;
+        int maxRows = (this.currentTab == 3 ? 10 : (this.currentTab == 5 ? TRACKPAD_ROWS : 7));
+        int maxCols = 0;
 
         if (this.navRow == -1) {
             this.currentTab = VISIBLE_TABS[Math.max(0, Math.min(TAB_COUNT - 1, tabPosition(this.currentTab) + dx))];
@@ -1296,15 +892,6 @@ public class SteamDeckConfigScreen extends Screen {
             int btnY = this.height - 23;
             targetX = (this.navCol == 0) ? 74 : (this.width - 62);
             targetY = btnY + 9;
-        } else if (this.currentTab < 3) {
-            int rowSlot = Math.min(16, (this.height - 70) / LEFT_COLUMN_BUTTONS.length);
-            int startY = 46;
-            int colW = (this.width - 24) / 2;
-            int leftColX = 8;
-            int rightColX = leftColX + colW + 8;
-            int colX = (this.navCol == 0) ? leftColX : rightColX;
-            targetX = colX + 76 + (colW - 78) / 2;
-            targetY = startY + this.navRow * rowSlot + (rowSlot - 2) / 2;
         } else {
             int startY = 46;
             int stepY = this.currentTab == 3 ? 19 : (this.currentTab == 5 ? PAD_STEP : 18);
@@ -1328,18 +915,7 @@ public class SteamDeckConfigScreen extends Screen {
         int key = event.key();
         boolean isEsc = event.isEscape() || key == 41 || key == 256;
 
-        // 1. Listening for Custom Key in modal
-        if (this.configuringCustomKey && this.listeningForKey) {
-            if (!isEsc) { // Not Escape
-                this.selectedCustomKey = key;
-                this.customKeyName = "Taste " + ActionBinding.getKeyLabel(key);
-            }
-            this.listeningForKey = false;
-            VirtualKeyboard.playClickSound();
-            return true;
-        }
-
-        // 2. Listening for Bridge Key
+        // 1. Listening for Bridge Key
         if (this.listeningForBridgeKey != null) {
             if (!isEsc) {
                 int assignKey = (key == 42 || key == 76 || key == 259 || key == 261) ? 0 : key;
@@ -1357,17 +933,8 @@ public class SteamDeckConfigScreen extends Screen {
             return true;
         }
 
-        // 3. Escape handling
+        // 2. Escape handling
         if (isEsc) {
-            if (this.configuringCustomKey) {
-                this.configuringCustomKey = false;
-                this.listeningForKey = false;
-                return true;
-            }
-            if (this.selectingButton != null) {
-                this.selectingButton = null;
-                return true;
-            }
             this.onClose();
             return true;
         }

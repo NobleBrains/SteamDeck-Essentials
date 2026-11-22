@@ -20,6 +20,20 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.0.0-beta.3
+
+### Neu
+* **Lautstärke und Helligkeit per Controller** (Minecrafts Gesamtlautstärke und Helligkeit, genau die Regler aus den Optionen, Helligkeit also max. 100 %). Beim Ändern erscheint oben ein Balken mit Prozentwert wie bei Steam. `options.txt` wird 1 s nach der letzten Änderung gespeichert.
+  * **Steam-Taste als Kombi-Taste** wie bei Steam (`chord_triton.vdf`: Steam + linker Stick = Lautstärke): Steam halten + linker Stick hoch/runter = Lautstärke, + rechter Stick hoch/runter = Helligkeit. Ein Schritt sofort, nach 400 ms wiederholt alle 100 ms. Solange Steam gehalten wird, bewegen die Sticks weder Figur noch Kamera noch Menüs. Das geht nur ohne laufendes Steam, sonst behält Steam die Taste für sich.
+  * Aktionen „Lautstärke +/−“ und „Helligkeit +/−“ zusätzlich frei belegbar (Abschnitt „Lautstärke & Helligkeit“). Halten = wiederholen ist dafür erlaubt.
+* **Stick-Schutz für die obere Raster-Reihe** (`gridTouchCancel`, Standard an, Zeile im Konfigurator unter „Linkes Trackpad“). Linker Stick und linkes Pad werden mit demselben Daumen bedient. Landet eine Berührung im oberen Bereich des Pads (oberhalb 40 %), während der Stick berührt (kapazitiver Sensor) oder ausgelenkt ist oder es vor weniger als 150 ms war, gilt sie als versehentlich: kein Overlay, keine Haptik, kein Auslösen. Sie wird als absichtlich bestätigt, sobald der Daumen den Stick 100 ms lang verlassen hat (Sensor aus, Stick mittig) und dabei auf dem Pad bleibt, oder sobald der Finger in die mittlere Reihe rutscht (unter 45 %). Ein Klick aus der verdächtigen Phase löst nicht nachträglich aus. Mittlere und untere Reihe sind nicht betroffen.
+* **Gyro-Würfel im Konfigurator:** Ein kleiner, flacher Quader in Controller-Form zwischen den Griffen der Zeichnung folgt live dem Gyro des Controllers, als Gyro-Test. Die Lage wird aus dem Gyro integriert, ein Komplementärfilter (Mahony) zieht Neigung und Kippen über den Beschleunigungssensor auf die Schwerkraft zurück, sodass nichts wegdriftet. Die Drehung um die Hochachse läuft langsam in die Mitte zurück. Die Oberseite (Tastenseite) ist cyan. Den Beschleunigungssensor schaltet die Mod nur, solange der Konfigurator offen ist, ein.
+* **⋯-Taste (Schnellmenü/QAM)** wird als belegbare Taste erkannt (SDL `MISC1`).
+* Konfigurator: Steam- und ⋯-Taste in der Zeichnung, Zeile „Steam + Stick“ mit Erklärung.
+* **Konfigurator-Zeichnung nach Steams Vorlage:** Die Umrisse von Steam Controller und Steam Deck sind Pixel-Fassungen von Steams eigenen Konfigurator-Grafiken (`controller_config_controller_triton.svg` / `_steam_deck.svg`). Striche sind vereinheitlicht und weiß, die Grafik ist auf 200 px Breite gerastert und hart auf 1 Bit geschwellt (`textures/gui/controller_*.png`). Die Hervorhebungen für Fokus und gedrückte Tasten liegen an den Tastenpositionen aus der SVG-Geometrie, Trigger und Rücktasten bleiben als kleine Laschen außen. Mit `originalControllerArt: false` gibt es die bisherige eigene Zeichnung.
+
+---
+
 ## 🚀 Version 1.0.0-beta.2
 
 ### Chat & Bildschirmtastatur für Controller (auch am PC)

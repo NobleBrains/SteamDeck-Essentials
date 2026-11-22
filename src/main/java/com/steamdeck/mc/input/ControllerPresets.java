@@ -87,6 +87,13 @@ public final class ControllerPresets {
         menus.put(DeckButton.DPAD_RIGHT, act(DeckAction.NONE));
         menus.put(DeckButton.DPAD_UP, act(DeckAction.NONE));
 
+        // Build a dedicated ControllerProfile so the user's existing profile is never overwritten
+        com.steamdeck.mc.config.ControllerProfile profile = new com.steamdeck.mc.config.ControllerProfile();
+        profile.id = "workshop_minecraft";
+        profile.name = WORKSHOP_MINECRAFT;
+        profile.parityGroup = "DUAL_PAD";
+        profile.copyFromConfig(c);
+
         for (ActionSet set : ActionSet.values()) {
             Map<DeckButton, ActionBinding> src = set == ActionSet.MENUS ? menus : game;
             Map<String, String> serialized = new HashMap<>();
@@ -95,27 +102,29 @@ public final class ControllerPresets {
                 if (b.gridIndex() >= 0) continue;
                 serialized.put(b.name(), src.getOrDefault(b, act(DeckAction.NONE)).serialize());
             }
-            c.actionSets.put(set.name(), serialized);
+            profile.actionSets.put(set.name(), serialized);
         }
 
         // Sticks, pads & gyro
-        c.enableRightStickRadialMenu = false;     // right joystick = joystick_mouse (camera)
-        c.enable8WayStickMapping = true;          // left joystick in D-Pad mode
-        c.stickDeadzoneAuto = true;               // no deadzone set in the layout -> Steam default per controller
-        c.sprintOnForward = true;                 // north = LEFT_CONTROL + W / UP
-        c.leftTrackpadMode = "DPAD_MOVE";         // group 1: D-Pad (requires click)
+        profile.enableRightStickRadialMenu = false;     // right joystick = joystick_mouse (camera)
+        profile.enable8WayStickMapping = true;          // left joystick in D-Pad mode
+        profile.stickDeadzoneAuto = true;               // no deadzone set in the layout -> Steam default per controller
+        profile.sprintOnForward = true;                 // north = LEFT_CONTROL + W / UP
+        profile.leftTrackpadMode = "DPAD_MOVE";         // group 1: D-Pad (requires click)
         // Pad clicks by pressure: the firmware click bit is unreliable (FINDINGS 10.1)
-        c.leftTrackpadClickMode = "PRESSURE";
-        c.leftTrackpadClickPressure = 0.125f;
-        c.rightTrackpadClickMode = "PRESSURE";    // group 21: Soft_Press, activation_threshold default 4096
-        c.rightTrackpadClickPressure = 0.125f;    // 4096 / 32768
-        c.nativeTrackpadCamera = true;            // absolute_mouse
-        c.trackpadSensitivity = 1.2f;             // sensitivity 120
-        c.enableGyroAiming = true;                // group 33 gyro_to_mouse
-        c.gyroActivation = "TRACKPAD_TOUCH";      // ratchet mask 0x180000 = left/right pad finger down, "any"
-        c.gyroSensitivityX = 2.0f;                // gyro_natural_sensitivity 200
-        c.gyroSensitivityY = 2.0f;
-        c.save();
+        profile.leftTrackpadClickMode = "PRESSURE";
+        profile.leftTrackpadClickPressure = 0.125f;
+        profile.rightTrackpadClickMode = "PRESSURE";    // group 21: Soft_Press, activation_threshold default 4096
+        profile.rightTrackpadClickPressure = 0.125f;    // 4096 / 32768
+        profile.nativeTrackpadCamera = true;            // absolute_mouse
+        profile.trackpadSensitivity = 1.2f;             // sensitivity 120
+        profile.enableGyroAiming = true;                // group 33 gyro_to_mouse
+        profile.gyroActivation = "TRACKPAD_TOUCH";      // ratchet mask 0x180000 = left/right pad finger down, "any"
+        profile.gyroSensitivityX = 2.0f;                // gyro_natural_sensitivity 200
+        profile.gyroSensitivityY = 2.0f;
+
+        com.steamdeck.mc.config.ControllerProfile.save(profile);
+        c.switchProfile(SteamDeckInputManager.getInstance().getActiveKind(), profile.id);
     }
 
     private static ActionBinding key(int code, String name) {

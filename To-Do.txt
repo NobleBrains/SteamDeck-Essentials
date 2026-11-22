@@ -96,3 +96,12 @@
   - Test mit und ohne laufendes Steam (doppelte Mausbewegung durch das Steam-Desktop-Layout?).
   - Prism-Flatpak: Zugriff auf `/dev/hidraw*` (braucht `--device=all` + udev-Regeln aus `steam-devices`).
 - [ ] Controller-Akku (`SDL_GetGamepadPowerInfo`) im Pausemenü anzeigen, wenn Desktop-Modus + Funk-Controller
+
+- [ ] **Optionale feste OSK-Extras (Merkliste)**
+  - `D-Pad ← / →`: Textcursor im Eingabefeld bewegen.
+  - `D-Pad ↑ / ↓`: Im Chat-Verlauf hoch/runter blättern (vorherige Befehle/Nachrichten).
+  - `Select` (`Create / View`): `TAB` für Befehls-Autovervollständigung oder `Shift`.
+
+- [ ] **Kein Aussperren bei fehlender Pause-/Schließen-Belegung (Merkliste)**
+  - Automatischer Fallback: Falls im `IN_GAME`-Action-Set keine Taste auf `PAUSE` liegt, öffnet `Start` trotzdem das Pausemenü.
+  - Falls im `MENUS`-Action-Set keine Taste auf `CLOSE_SCREEN` liegt, schließen `B` / `Start` trotzdem das Menü.

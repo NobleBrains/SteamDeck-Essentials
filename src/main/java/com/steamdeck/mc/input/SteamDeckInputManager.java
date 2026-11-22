@@ -80,6 +80,8 @@ public class SteamDeckInputManager {
     private static final long MENU_NAV_REPEAT_INTERVAL_MS = 130;
 
     private boolean sneakToggled = false;
+    private volatile float leftTriggerValue = 0.0f;
+    private volatile float rightTriggerValue = 0.0f;
     private int lastBowPullStage = -1;
     private int lastLowDurabilityItemSlot = -1;
     private long lastDeviceCheckTime = 0;
@@ -116,13 +118,18 @@ public class SteamDeckInputManager {
         return activeGamepadHandle != 0 || activeJoystickHandle != 0;
     }
 
+    /** Analog pull intensity 0.0..1.0 for left (0) or right (1) trigger. */
+    public float getTriggerValue(int side) {
+        return side == 0 ? leftTriggerValue : rightTriggerValue;
+    }
+
     /**
      * The Steam Input bridge (paddles/stick touch arriving as keyboard keys) is only needed while Steam
-     * Input translates the controller. A native Valve controller delivers those buttons directly, and on
+     * Input translates the controller. A native controller delivers those buttons directly, and on
      * a desktop the bridge would swallow real keyboard keys ('/', '[', ...).
      */
     public boolean isSteamInputBridgeActive() {
-        if (activeKind.isNativeValve()) return false;
+        if (activeKind.isNativeController()) return false;
         return com.steamdeck.mc.platform.PlatformDetector.isHandheld() || ModConfig.getInstance().steamInputBridgeOnDesktop;
     }
 
@@ -174,6 +181,8 @@ public class SteamDeckInputManager {
                     return;
                 }
                 SteamDeckEssentials.LOGGER.info("[INPUT] Switching to preferred controller (ID {})", best[0]);
+                com.steamdeck.mc.power.DualSenseAdaptiveTriggers.getInstance().clear(activeGamepadHandle);
+                leftTriggerValue = rightTriggerValue = 0.0f;
                 releaseAllButtons();
                 SDLGamepad.SDL_CloseGamepad(activeGamepadHandle);
                 activeGamepadHandle = 0;
@@ -185,6 +194,8 @@ public class SteamDeckInputManager {
             } else {
                 SteamDeckEssentials.LOGGER.info("[INPUT] SDL Gamepad disconnected: ID {}", activeGamepadId);
                 com.steamdeck.mc.gui.ControllerToast.getInstance().onDisconnected(activeKind, activeDeviceName);
+                com.steamdeck.mc.power.DualSenseAdaptiveTriggers.getInstance().clear(activeGamepadHandle);
+                leftTriggerValue = rightTriggerValue = 0.0f;
                 releaseAllButtons();
                 SDLGamepad.SDL_CloseGamepad(activeGamepadHandle);
                 activeGamepadHandle = 0;
@@ -226,6 +237,7 @@ public class SteamDeckInputManager {
                 activeGamepadId = best[0];
                 activeKind = bestKind;
                 activeDeviceName = String.valueOf(SDLGamepad.SDL_GetGamepadName(handle));
+                ModConfig.getInstance().activateProfileFor(bestKind);
                 logControllerDiagnostics(handle, best[0], bestKind);
                 lastPowerQuery = 0L; // battery of the new controller, not the cached one of the old
                 com.steamdeck.mc.gui.ControllerToast.getInstance().onConnected(bestKind, activeDeviceName);
@@ -261,6 +273,7 @@ public class SteamDeckInputManager {
                                 SDLJoystick.SDL_GetJoystickVendorForID(joyId) & 0xFFFF,
                                 SDLJoystick.SDL_GetJoystickProductForID(joyId) & 0xFFFF);
                         activeDeviceName = String.valueOf(SDLJoystick.SDL_GetJoystickNameForID(joyId));
+                        ModConfig.getInstance().activateProfileFor(activeKind);
                         SteamDeckEssentials.LOGGER.info("[INPUT] Connected to raw SDL joystick: '{}' (ID {}, {})",
                                 activeDeviceName, joyId, activeKind.getLabel());
                         lastPowerQuery = 0L;
@@ -335,7 +348,7 @@ public class SteamDeckInputManager {
                     activeDeviceName, id, kind.getLabel(),
                     String.format("%04x", vendor), String.format("%04x", product),
                     SDLGamepad.SDL_GetGamepadType(handle), touchpads, gyro, accel, rumble, buttons,
-                    kind.isNativeValve() ? "nein (nativ)" : (kind == ControllerKind.STEAM_VIRTUAL ? "ja" : "-"));
+                    kind.isNativeController() ? "nein (nativ)" : (kind == ControllerKind.STEAM_VIRTUAL ? "ja" : "-"));
         } catch (Throwable t) {
             SteamDeckEssentials.LOGGER.info("[INPUT] Connected to SDL gamepad '{}' (ID {}, {})", activeDeviceName, id, kind.getLabel());
             SteamDeckEssentials.LOGGER.debug("[INPUT] Diagnostics failed", t);
@@ -389,6 +402,35 @@ public class SteamDeckInputManager {
             processButton(DeckButton.R5, bridgeR5Down, client, currentActionSet);
             processButton(DeckButton.LEFT_STICK_TOUCH, bridgeL3TouchDown, client, currentActionSet);
             processButton(DeckButton.RIGHT_STICK_TOUCH, bridgeR3TouchDown, client, currentActionSet);
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Steam button chord
+    // ---------------------------------------------------------------------------------------
+
+    private volatile boolean steamChordActive = false;
+    private final int[] chordDir = {0, 0};
+    private final long[] chordHoldStart = {0L, 0L};
+    private final long[] chordLastStep = {0L, 0L};
+    private static final long CHORD_REPEAT_DELAY_MS = 400L;  // like a Steam long press
+    private static final long CHORD_REPEAT_RATE_MS = 100L;
+
+    /** Stick up = +1, down = -1; one step on entering, then repeating while held. */
+    private void updateChordAxis(int axis, float y, Runnable up, Runnable down) {
+        int dir = y < -0.6f ? 1 : (y > 0.6f ? -1 : 0);
+        long now = System.currentTimeMillis();
+        if (dir == 0) {
+            chordDir[axis] = 0;
+            return;
+        }
+        if (dir != chordDir[axis]) {
+            chordDir[axis] = dir;
+            chordHoldStart[axis] = chordLastStep[axis] = now;
+            (dir > 0 ? up : down).run();
+        } else if (now - chordHoldStart[axis] >= CHORD_REPEAT_DELAY_MS && now - chordLastStep[axis] >= CHORD_REPEAT_RATE_MS) {
+            chordLastStep[axis] = now;
+            (dir > 0 ? up : down).run();
         }
     }
 
@@ -523,12 +565,21 @@ public class SteamDeckInputManager {
         // 0. Trackpad pressure, clicks (hardware or Steam-style click pressure) and left-pad D-Pad
         ModConfig cfg = ModConfig.getInstance();
         updateTrackpadPressure();
-        boolean hardLeft = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_TOUCHPAD);
-        boolean hardRight = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2);
+        boolean rawTouchpadClick = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_TOUCHPAD);
+        boolean hardLeft;
+        boolean hardRight;
+        if (activeKind.hasDualTouchpads()) {
+            hardLeft = rawTouchpadClick;
+            hardRight = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2);
+        } else {
+            // Single center touchpad (e.g. PS5 DualSense): map click to RIGHT_TRACKPAD (mouse left click in menus)
+            hardLeft = false;
+            hardRight = rawTouchpadClick;
+        }
         // Steam-Input-style click pressure: the configured force threshold counts as a click (a full hardware click always counts)
         if (isPressureClickActive(0)) hardLeft |= updatePressureClick(0, cfg.leftTrackpadClickPressure);
         if (isPressureClickActive(1)) hardRight |= updatePressureClick(1, cfg.rightTrackpadClickPressure);
-        boolean leftPadDpad = "DPAD_MOVE".equals(cfg.leftTrackpadMode) && activeKind.isNativeValve() && !hasScreen;
+        boolean leftPadDpad = "DPAD_MOVE".equals(cfg.leftTrackpadMode) && activeKind.hasDualTouchpads() && !hasScreen;
         boolean leftPadGrid = isGridModeActive() && !hasScreen && !VirtualKeyboard.getInstance().isOpen();
 
         // 1. Left Stick -> discrete 8-way movement in-game, or menu/gamemode navigation in screens
@@ -536,6 +587,27 @@ public class SteamDeckInputManager {
         short rawLy = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_LEFTY);
         float leftX = rawLx < 0 ? (float) rawLx / 32768.0f : (float) rawLx / 32767.0f;
         float leftY = rawLy < 0 ? (float) rawLy / 32768.0f : (float) rawLy / 32767.0f;
+
+        // Left stick activity for the grid's touch cancel (thumb on the stick brushing the pad's top row)
+        if (Math.hypot(leftX, leftY) > getStickDeadzone()) lastLeftStickBusyMs = System.currentTimeMillis();
+
+        // Steam button chord (like Steam's own): held + left stick up/down = volume, + right stick
+        // up/down = brightness. While held the sticks don't move the player, camera or menus.
+        boolean steamHeld = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_GUIDE);
+        steamChordActive = steamHeld;
+        if (steamHeld) {
+            markControllerActivity();
+            short rawRyChord = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_RIGHTY);
+            float rightYChord = rawRyChord < 0 ? rawRyChord / 32768.0f : rawRyChord / 32767.0f;
+            updateChordAxis(0, leftY, () -> com.steamdeck.mc.gui.LevelOsd.adjustVolume(client, 1),
+                    () -> com.steamdeck.mc.gui.LevelOsd.adjustVolume(client, -1));
+            updateChordAxis(1, rightYChord, () -> com.steamdeck.mc.gui.LevelOsd.adjustBrightness(client, 1),
+                    () -> com.steamdeck.mc.gui.LevelOsd.adjustBrightness(client, -1));
+            leftX = 0.0f;
+            leftY = 0.0f;
+        } else {
+            chordDir[0] = chordDir[1] = 0;
+        }
 
         // Left trackpad as click-D-Pad (Steam "D-Pad" mode, requires click): while clicked, the finger
         // position is the movement direction. The stick wins if both are used.
@@ -565,7 +637,7 @@ public class SteamDeckInputManager {
         }
 
         // 2. Right Stick: Radial Menu in normal gameplay, Precision Aiming when actively drawing Bow/Spyglass
-        if (player != null && !hasScreen && client.mouseHandler.isMouseGrabbed()) {
+        if (player != null && !hasScreen && client.mouseHandler.isMouseGrabbed() && !steamHeld) {
             short rawRx = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_RIGHTX);
             short rawRy = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_RIGHTY);
             float rightX = rawRx < 0 ? (float) rawRx / 32768.0f : (float) rawRx / 32767.0f;
@@ -585,11 +657,39 @@ public class SteamDeckInputManager {
             com.steamdeck.mc.gui.RadialMenuOverlay.getInstance().cancel();
         }
 
-        // 3. Triggers (analog to digital threshold > 30%)
+        // 3. Triggers (analog 0..1 with configurable threshold + DualSense adaptive resistance)
         short rawRt = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
         short rawLt = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
-        processButton(DeckButton.RT, rawRt > 9830, client, set);
-        processButton(DeckButton.LT, rawLt > 9830, client, set);
+        leftTriggerValue = Math.max(0.0f, Math.min(1.0f, rawLt / 32767.0f));
+        rightTriggerValue = Math.max(0.0f, Math.min(1.0f, rawRt / 32767.0f));
+        processButton(DeckButton.RT, rightTriggerValue >= cfg.rightTriggerThreshold, client, set);
+        processButton(DeckButton.LT, leftTriggerValue >= cfg.leftTriggerThreshold, client, set);
+        if (activeKind.hasAdaptiveTriggers()) {
+            boolean aiming = player != null && GyroManager.getInstance().isContextuallyAiming(player);
+            float bowProgress = (aiming && player.isUsingItem())
+                    ? Math.min(1.0f, player.getTicksUsingItem() / 20.0f) : 0.0f;
+            float blockHardness = -2.0f; // -2 = no block targeted, -1 = unbreakable (bedrock), >=0 = destroySpeed
+            if (player != null && client.level != null && !hasScreen
+                    && client.hitResult instanceof net.minecraft.world.phys.BlockHitResult bhr
+                    && bhr.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                var pos = bhr.getBlockPos();
+                blockHardness = client.level.getBlockState(pos).getDestroySpeed(client.level, pos);
+            }
+            boolean blocking = player != null && player.isBlocking();
+            boolean lowDurability = false;
+            if (player != null) {
+                var stack = player.getMainHandItem();
+                if (stack.isDamageableItem()) {
+                    int max = stack.getMaxDamage();
+                    if (max > 0 && (max - stack.getDamageValue()) <= Math.max(1, max / 10)) {
+                        lowDurability = true;
+                    }
+                }
+            }
+            com.steamdeck.mc.power.DualSenseAdaptiveTriggers.getInstance()
+                    .update(activeGamepadHandle, activeKind, hasScreen, aiming, bowProgress,
+                            blockHardness, blocking, lowDurability);
+        }
 
         // 4. Face Buttons
         processButton(DeckButton.A, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_SOUTH), client, set);
@@ -650,6 +750,7 @@ public class SteamDeckInputManager {
         // 8. Start & Select
         processButton(DeckButton.START, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_START), client, set);
         processButton(DeckButton.SELECT, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_BACK), client, set);
+        processButton(DeckButton.QAM, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC1), client, set);
 
         // 9. Joystick Capacitive Touch
         processButton(DeckButton.LEFT_STICK_TOUCH, SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC3) || bridgeL3TouchDown, client, set);
@@ -840,20 +941,31 @@ public class SteamDeckInputManager {
             return;
         }
 
-        // Virtual Keyboard Dual-Trackpad / Dual-Cursor Typing
-        if (com.steamdeck.mc.gui.VirtualKeyboard.getInstance().isOpen() && isDown && !wasDown) {
-            net.minecraft.client.gui.screens.Screen screen = (client.gui != null) ? client.gui.screen() : null;
-            if (screen != null) {
-                if (button == DeckButton.LT || button == DeckButton.LEFT_TRACKPAD || button == DeckButton.LB) {
-                    if (com.steamdeck.mc.gui.VirtualKeyboard.getInstance().triggerLeftCursorClick(screen)) {
-                        return;
-                    }
-                } else if (button == DeckButton.RT || button == DeckButton.RIGHT_TRACKPAD || button == DeckButton.RB) {
-                    if (com.steamdeck.mc.gui.VirtualKeyboard.getInstance().triggerRightCursorClick(screen)) {
-                        return;
+        // Virtual Keyboard Dual-Selector / Touchpad Typing (consume both press and release edges so
+        // MENUS bindings like MOUSE_LEFT_CLICK never fire underneath the OSK)
+        if (com.steamdeck.mc.gui.VirtualKeyboard.getInstance().isOpen()
+                && (button == DeckButton.LT || button == DeckButton.LEFT_TRACKPAD || button == DeckButton.LB || button == DeckButton.L3
+                    || button == DeckButton.RT || button == DeckButton.RIGHT_TRACKPAD || button == DeckButton.RB || button == DeckButton.R3)) {
+            if (isDown && !wasDown) {
+                net.minecraft.client.gui.screens.Screen screen = (client.gui != null) ? client.gui.screen() : null;
+                if (screen != null) {
+                    var osk = com.steamdeck.mc.gui.VirtualKeyboard.getInstance();
+                    if (button == DeckButton.LT || button == DeckButton.LEFT_TRACKPAD || button == DeckButton.LB || button == DeckButton.L3) {
+                        osk.triggerLeftCursorClick(screen);
+                    } else if (button == DeckButton.RIGHT_TRACKPAD && !activeKind.hasDualTouchpads()) {
+                        // Single center touchpad (DualSense): acts as a normal mouse click on the OSK
+                        var win = client.getWindow();
+                        if (win != null && win.getScreenWidth() > 0 && win.getScreenHeight() > 0) {
+                            double guiX = client.mouseHandler.xpos() * (double) win.getGuiScaledWidth() / (double) win.getScreenWidth();
+                            double guiY = client.mouseHandler.ypos() * (double) win.getGuiScaledHeight() / (double) win.getScreenHeight();
+                            osk.mouseClicked(screen, guiX, guiY, 0);
+                        }
+                    } else {
+                        osk.triggerRightCursorClick(screen);
                     }
                 }
             }
+            return;
         }
 
         // Right Stick Click (R3) cycles Radial Menu pages when Radial Menu is enabled in-game
@@ -1042,6 +1154,17 @@ public class SteamDeckInputManager {
                     pressMapping(client, client.options.keyChat, isDown, wasDown, true);
                 } else if (isDown && !wasDown && client.gui != null) {
                     client.gui.openChatScreen(ChatMethod.MESSAGE);
+                }
+            }
+            case VOLUME_UP, VOLUME_DOWN, BRIGHTNESS_UP, BRIGHTNESS_DOWN -> {
+                // Same options as the Options screen; fine in-game and in menus
+                if (isDown && !wasDown) {
+                    switch (action) {
+                        case VOLUME_UP -> com.steamdeck.mc.gui.LevelOsd.adjustVolume(client, 1);
+                        case VOLUME_DOWN -> com.steamdeck.mc.gui.LevelOsd.adjustVolume(client, -1);
+                        case BRIGHTNESS_UP -> com.steamdeck.mc.gui.LevelOsd.adjustBrightness(client, 1);
+                        default -> com.steamdeck.mc.gui.LevelOsd.adjustBrightness(client, -1);
+                    }
                 }
             }
             case HOTBAR_SLOT_1, HOTBAR_SLOT_2, HOTBAR_SLOT_3, HOTBAR_SLOT_4, HOTBAR_SLOT_5,
@@ -1491,8 +1614,8 @@ public class SteamDeckInputManager {
             SDLJoystick.SDL_UpdateJoysticks();
         }
 
-        // 1. Right stick
-        float[] stick = readRightStick();
+        // 1. Right stick (not while the Steam button chord uses it for brightness)
+        float[] stick = steamChordActive ? new float[]{0.0f, 0.0f} : readRightStick();
         boolean aiming = GyroManager.getInstance().isContextuallyAiming(player);
         if (aiming || !config.enableRightStickRadialMenu) {
             float deadzone = aiming ? 0.02f : Math.max(0.05f, getStickDeadzone() * 0.5f);
@@ -1546,7 +1669,15 @@ public class SteamDeckInputManager {
     private long cameraSegmentEnd = 0L;
 
     private boolean isNativeTrackpadActive(ModConfig config) {
-        return config.nativeTrackpadCamera && activeKind.isNativeValve() && activeGamepadHandle != 0;
+        return isNativeTrackpadActive(config, false);
+    }
+
+    private boolean isNativeTrackpadActive(ModConfig config, boolean inMenu) {
+        if (activeGamepadHandle == 0 || !activeKind.hasNativeTouchpad()) return false;
+        if (activeKind.hasDualTouchpads()) {
+            return config.nativeTrackpadCamera;
+        }
+        return inMenu ? config.centerTrackpadMenuMouse : "CAMERA".equals(config.centerTrackpadMode);
     }
 
     /**
@@ -1648,7 +1779,7 @@ public class SteamDeckInputManager {
      */
     private void pollTrackpadCursor(Minecraft client) {
         ModConfig config = ModConfig.getInstance();
-        if (!isNativeTrackpadActive(config) || client.getWindow() == null) {
+        if (!isNativeTrackpadActive(config, true) || client.getWindow() == null) {
             cursorPad.reset();
             cursorX = -1;
             return;
@@ -1840,13 +1971,23 @@ public class SteamDeckInputManager {
         return padPressure[side];
     }
 
+    /** Normalized finger X position (0..1) on the left (0) / right (1) pad. */
+    public float getTrackpadX(int side) {
+        return padX[side];
+    }
+
+    /** Normalized finger Y position (0..1) on the left (0) / right (1) pad. */
+    public float getTrackpadY(int side) {
+        return padY[side];
+    }
+
     public boolean isTrackpadPressureClicked(int side) {
         return padPressureClick[side];
     }
 
-    /** Reads the finger pressure of both pads from SDL (touchpad 0 = left, 1 = right). */
+    /** Reads the finger pressure of both pads from SDL (touchpad 0 = left, 1 = right; single pad -> right). */
     public void updateTrackpadPressure() {
-        if (activeGamepadHandle == 0 || !activeKind.isNativeValve()) {
+        if (activeGamepadHandle == 0 || !activeKind.hasNativeTouchpad()) {
             padPressure[0] = padPressure[1] = -1.0f;
             return;
         }
@@ -1900,7 +2041,7 @@ public class SteamDeckInputManager {
 
     public boolean isGridModeActive() {
         return "GRID_3X3".equals(ModConfig.getInstance().leftTrackpadMode)
-                && activeKind.isNativeValve() && activeGamepadHandle != 0;
+                && activeKind.hasDualTouchpads() && activeGamepadHandle != 0;
     }
 
     /** Field under the finger (0..8) or -1. */
@@ -1933,8 +2074,72 @@ public class SteamDeckInputManager {
         return row * 3 + col;
     }
 
+    // Touch cancel for the top row: the left stick and the left pad are used with the same thumb
+    private static final float GRID_TOP_BAND = 0.40f;        // landing above this = top row area
+    private static final float GRID_CONFIRM_BELOW = 0.45f;   // sliding below this = clearly intentional
+    private static final long STICK_RECENT_MS = 150L;        // stick counts as busy shortly after letting go
+    private static final long STICK_CALM_CONFIRM_MS = 100L;  // thumb off the stick this long = intentional
+    private long lastLeftStickBusyMs = 0L;
+    private boolean gridTouchActive = false;
+    private boolean gridTouchSuspect = false;
+    private long gridStickCalmSince = 0L;
+
+    private boolean isLeftStickBusyNow() {
+        boolean touched = activeGamepadHandle != 0
+                && SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC3);
+        if (touched) lastLeftStickBusyMs = System.currentTimeMillis();
+        return touched || System.currentTimeMillis() - lastLeftStickBusyMs < 20L;
+    }
+
+    /**
+     * True while the current pad touch is probably the thumb that is on the left stick brushing the
+     * pad's top edge. Such a touch shows no grid, gives no haptics and can't click, until it proves
+     * intentional: the thumb leaves the stick (capacitive sensor off, stick centred) for 100 ms while
+     * still on the pad, or the finger slides into the middle row (impossible with the thumb on the stick).
+     */
+    private boolean updateGridTouchCancel(boolean touching, boolean clicked) {
+        long now = System.currentTimeMillis();
+        if (!touching && !clicked) {
+            gridTouchActive = false;
+            gridTouchSuspect = false;
+            return false;
+        }
+        boolean stickNow = isLeftStickBusyNow();
+        if (touching && !gridTouchActive) {
+            gridTouchActive = true;
+            boolean stickRecent = stickNow || now - lastLeftStickBusyMs < STICK_RECENT_MS;
+            gridTouchSuspect = ModConfig.getInstance().gridTouchCancel && padY[0] < GRID_TOP_BAND && stickRecent;
+            gridStickCalmSince = 0L;
+        }
+        if (gridTouchSuspect) {
+            if (touching && padY[0] > GRID_CONFIRM_BELOW) {
+                gridTouchSuspect = false;
+            } else if (stickNow) {
+                gridStickCalmSince = 0L;
+            } else if (gridStickCalmSince == 0L) {
+                gridStickCalmSince = now;
+            } else if (now - gridStickCalmSince >= STICK_CALM_CONFIRM_MS) {
+                gridTouchSuspect = false;
+            }
+        }
+        return gridTouchSuspect;
+    }
+
     private void updateTrackpadGrid(Minecraft client, ActionSet set, boolean clicked) {
         long now = System.currentTimeMillis();
+        if (updateGridTouchCancel(padPressure[0] >= 0.0f, clicked)) {
+            // Accidental touch: nothing visible, nothing fires. Remember the physical click so a click
+            // that started now can't fire later when the touch turns out to be intentional.
+            gridHoverCell = -1;
+            gridClickWasDown = clicked;
+            for (int i = 0; i < 9; i++) {
+                if (Boolean.TRUE.equals(prevButtonStates.get(DeckButton.gridCell(i)))) {
+                    processButton(DeckButton.gridCell(i), false, client, set);
+                }
+            }
+            gridPressedCell = -1;
+            return;
+        }
         if (padPressure[0] >= 0.0f) {
             gridLastTouchMs = now;
             int cell = gridCellAt(padX[0], padY[0], gridHoverCell);
@@ -2029,55 +2234,93 @@ public class SteamDeckInputManager {
         if (activeGamepadHandle != 0) {
             SDLGamepad.SDL_UpdateGamepads();
             updateTrackpadPressure();
-            if (VirtualKeyboard.getInstance().isOpen() && activeKind.isNativeValve()) {
-                // SteamOS-style typing: both pads point at their half of the keyboard
+            if (VirtualKeyboard.getInstance().isOpen() && activeKind.hasDualTouchpads()) {
+                // SteamOS-style typing: both pads point directly at their half of the keyboard
                 cursorPad.reset();
                 pollTrackpadKeyboard();
             } else {
                 pollTrackpadCursor(client);
             }
         }
-        if (!VirtualKeyboard.getInstance().isOpen()) return;
+        if (!VirtualKeyboard.getInstance().isOpen()) {
+            resetOskStickNav();
+            return;
+        }
 
-        float speedScale = Math.max(0.15f, Math.min(2.5f, frameDeltaTicks));
         if (activeGamepadHandle != 0) {
             SDLGamepad.SDL_UpdateGamepads();
             short rawLx = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_LEFTX);
             short rawLy = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_LEFTY);
             float leftX = rawLx < 0 ? (float) rawLx / 32768.0f : (float) rawLx / 32767.0f;
             float leftY = rawLy < 0 ? (float) rawLy / 32768.0f : (float) rawLy / 32767.0f;
-            if (Math.hypot(leftX, leftY) > 0.15f) {
-                VirtualKeyboard.getInstance().moveLeftCursor(leftX * 6.5f * speedScale, leftY * 6.5f * speedScale);
-                markControllerActivity();
-            }
+            updateOskStickNav(0, leftX, leftY);
 
             short rawRx = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_RIGHTX);
             short rawRy = SDLGamepad.SDL_GetGamepadAxis(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_AXIS_RIGHTY);
             float rightX = rawRx < 0 ? (float) rawRx / 32768.0f : (float) rawRx / 32767.0f;
             float rightY = rawRy < 0 ? (float) rawRy / 32768.0f : (float) rawRy / 32767.0f;
-            if (Math.hypot(rightX, rightY) > 0.15f) {
-                VirtualKeyboard.getInstance().moveRightCursor(rightX * 6.5f * speedScale, rightY * 6.5f * speedScale);
-                markControllerActivity();
-            }
+            updateOskStickNav(1, rightX, rightY);
         } else if (activeJoystickHandle != 0) {
             SDLJoystick.SDL_UpdateJoysticks();
             short rawLx = SDLJoystick.SDL_GetJoystickAxis(activeJoystickHandle, 0);
             short rawLy = SDLJoystick.SDL_GetJoystickAxis(activeJoystickHandle, 1);
             float leftX = rawLx < 0 ? (float) rawLx / 32768.0f : (float) rawLx / 32767.0f;
             float leftY = rawLy < 0 ? (float) rawLy / 32768.0f : (float) rawLy / 32767.0f;
-            if (Math.hypot(leftX, leftY) > 0.15f) {
-                VirtualKeyboard.getInstance().moveLeftCursor(leftX * 6.5f * speedScale, leftY * 6.5f * speedScale);
-                markControllerActivity();
-            }
+            updateOskStickNav(0, leftX, leftY);
 
             short rawRx = SDLJoystick.SDL_GetJoystickAxis(activeJoystickHandle, 2);
             short rawRy = SDLJoystick.SDL_GetJoystickAxis(activeJoystickHandle, 3);
             float rightX = rawRx < 0 ? (float) rawRx / 32768.0f : (float) rawRx / 32767.0f;
             float rightY = rawRy < 0 ? (float) rawRy / 32768.0f : (float) rawRy / 32767.0f;
-            if (Math.hypot(rightX, rightY) > 0.15f) {
-                VirtualKeyboard.getInstance().moveRightCursor(rightX * 6.5f * speedScale, rightY * 6.5f * speedScale);
-                markControllerActivity();
-            }
+            updateOskStickNav(1, rightX, rightY);
+        }
+    }
+
+    private final int[] oskPrevDx = {0, 0};
+    private final int[] oskPrevDy = {0, 0};
+    private final long[] oskHoldStartMs = {0L, 0L};
+    private final long[] oskLastRepeatMs = {0L, 0L};
+    private static final long OSK_NAV_INITIAL_DELAY_MS = 280L;
+    private static final long OSK_NAV_REPEAT_INTERVAL_MS = 110L;
+
+    private void resetOskStickNav() {
+        oskPrevDx[0] = oskPrevDx[1] = 0;
+        oskPrevDy[0] = oskPrevDy[1] = 0;
+        oskHoldStartMs[0] = oskHoldStartMs[1] = 0L;
+    }
+
+    private void updateOskStickNav(int stick, float x, float y) {
+        int dx = 0;
+        int dy = 0;
+        if (Math.abs(x) > Math.abs(y)) {
+            if (x > 0.55f) dx = 1;
+            else if (x < -0.55f) dx = -1;
+        } else {
+            if (y > 0.55f) dy = 1;
+            else if (y < -0.55f) dy = -1;
+        }
+
+        if (dx == 0 && dy == 0) {
+            oskPrevDx[stick] = 0;
+            oskPrevDy[stick] = 0;
+            oskHoldStartMs[stick] = 0L;
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        boolean changed = (dx != oskPrevDx[stick] || dy != oskPrevDy[stick]);
+        if (changed) {
+            oskPrevDx[stick] = dx;
+            oskPrevDy[stick] = dy;
+            oskHoldStartMs[stick] = now;
+            oskLastRepeatMs[stick] = now;
+            VirtualKeyboard.getInstance().navigateStick(stick == 1, dx, dy);
+            markControllerActivity();
+        } else if (now - oskHoldStartMs[stick] >= OSK_NAV_INITIAL_DELAY_MS
+                && now - oskLastRepeatMs[stick] >= OSK_NAV_REPEAT_INTERVAL_MS) {
+            oskLastRepeatMs[stick] = now;
+            VirtualKeyboard.getInstance().navigateStick(stick == 1, dx, dy);
+            markControllerActivity();
         }
     }
 
@@ -2121,7 +2364,7 @@ public class SteamDeckInputManager {
      * Diagnostic string for F3 overlay and logs.
      */
     public String getDebugTelemetry() {
-        String camera = (ModConfig.getInstance().nativeTrackpadCamera && activeKind.isNativeValve()) ? " | Trackpad-Kamera" : "";
+        String camera = isNativeTrackpadActive(ModConfig.getInstance()) ? " | Trackpad-Kamera" : "";
         return String.format("Controller: '%s' (%s) | ActionSet: %s%s",
                 activeDeviceName, activeKind.getLabel(), currentActionSet.name(), camera);
     }

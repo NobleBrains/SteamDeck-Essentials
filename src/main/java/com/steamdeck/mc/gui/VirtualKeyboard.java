@@ -58,6 +58,9 @@ public class VirtualKeyboard {
     private float rightCursorX = -1;
     private float rightCursorY = -1;
     private boolean dualCursorActive = false;
+    private boolean joySelectorActive = false;
+    private Key joyLeftKey = null;
+    private Key joyRightKey = null;
 
     // Absolute trackpad typing (SteamOS style): each pad covers its half of the keyboard
     private final boolean[] padTouching = {false, false};
@@ -404,8 +407,12 @@ public class VirtualKeyboard {
     }
 
     private void renderKey(GuiGraphicsExtractor graphics, Font font, Key key, int mouseX, int mouseY) {
-        boolean isLeftHover = this.dualCursorActive && (padTouching[0] ? key == padHoverKey[0] : (this.splitMode && key.contains(this.leftCursorX, this.leftCursorY)));
-        boolean isRightHover = this.dualCursorActive && (padTouching[1] ? key == padHoverKey[1] : (this.splitMode && key.contains(this.rightCursorX, this.rightCursorY)));
+        boolean isLeftHover = (padTouching[0] && key == padHoverKey[0])
+                || (this.joySelectorActive && key == this.joyLeftKey)
+                || (this.dualCursorActive && !padTouching[0] && !this.joySelectorActive && this.splitMode && key.contains(this.leftCursorX, this.leftCursorY));
+        boolean isRightHover = (padTouching[1] && key == padHoverKey[1])
+                || (this.joySelectorActive && key == this.joyRightKey)
+                || (this.dualCursorActive && !padTouching[1] && !this.joySelectorActive && this.splitMode && key.contains(this.rightCursorX, this.rightCursorY));
         boolean hovered = key.contains((double) mouseX, (double) mouseY) || isLeftHover || isRightHover;
         boolean active = (key.type == KeyType.SHIFT && this.shifted)
                 || (key.type == KeyType.CAPS && this.capsLock)
@@ -434,9 +441,9 @@ public class VirtualKeyboard {
 
         int borderColor;
         if (isLeftHover) {
-            borderColor = 0xFF00FFCC; // Cyan reticle hover for left cursor
+            borderColor = 0xFF00BFFF; // Blue/Cyan outline for left joystick / pad selector
         } else if (isRightHover) {
-            borderColor = 0xFFFFB300; // Amber reticle hover for right cursor
+            borderColor = 0xFFFF9500; // Orange outline for right joystick / pad selector
         } else if (!hovered && !active) {
             borderColor = 0x3300FFFF;
         } else {
@@ -444,6 +451,10 @@ public class VirtualKeyboard {
         }
         graphics.fill(key.x, key.y, key.x + key.width, key.y + 1, borderColor);
         graphics.fill(key.x, key.y + key.height - 1, key.x + key.width, key.y + key.height, borderColor);
+        if (isLeftHover || isRightHover) {
+            graphics.fill(key.x, key.y, key.x + 1, key.y + key.height, borderColor);
+            graphics.fill(key.x + key.width - 1, key.y, key.x + key.width, key.y + key.height, borderColor);
+        }
 
         String label;
         if (key.type == KeyType.SYMBOLS) {
@@ -494,7 +505,7 @@ public class VirtualKeyboard {
             // Controller legend above the keyboard (only while a controller is the input device)
             if (com.steamdeck.mc.input.SteamDeckInputManager.getInstance().isControllerContext()) {
                 String legend = font.plainSubstrByWidth(
-                        "A Taste  •  X Löschen  •  Y Leer  •  Start Senden  •  B Tastatur aus  •  L/R tippen", screen.width - 12);
+                        "A Taste  •  X Löschen  •  Y Leer  •  Start Senden  •  B Aus  •  L3/R3/L/R tippen", screen.width - 12);
                 int lw = font.width(legend);
                 int lx = (screen.width - lw) / 2;
                 int ly = this.kbY - 11;
@@ -517,9 +528,11 @@ public class VirtualKeyboard {
                     }
                 }
 
-                // Render Dual SteamOS Trackpad Cursors in Split Mode
-                if (this.dualCursorActive) {
+                // Render Dual SteamOS Trackpad Cursors in Split Mode (only when trackpads are touched)
+                if (padTouching[0]) {
                     renderReticle(graphics, this.leftCursorX, this.leftCursorY, 0xFF00FFCC, 0x8800E5FF);
+                }
+                if (padTouching[1]) {
                     renderReticle(graphics, this.rightCursorX, this.rightCursorY, 0xFFFFB300, 0x88FFAA00);
                 }
             } else {
@@ -529,7 +542,7 @@ public class VirtualKeyboard {
                         this.renderKey(graphics, font, key, mouseX, mouseY);
                     }
                 }
-                // Full layout: pads still cover the left / right half of the keyboard
+                // Full layout: show reticle only when a trackpad is touched
                 if (padTouching[0]) renderReticle(graphics, this.leftCursorX, this.leftCursorY, 0xFF00FFCC, 0x8800E5FF);
                 if (padTouching[1]) renderReticle(graphics, this.rightCursorX, this.rightCursorY, 0xFFFFB300, 0x88FFAA00);
             }
@@ -539,17 +552,85 @@ public class VirtualKeyboard {
     /** Which pointer moved last (A types with that one). */
     private boolean lastCursorRight = true;
 
+    /**
+     * Discrete key-to-key navigation for Left Stick (blue/cyan) and Right Stick (orange).
+     */
+    public void navigateStick(boolean right, int dx, int dy) {
+        if (!this.open || (dx == 0 && dy == 0)) return;
+        List<List<Key>> rows = this.splitMode ? (right ? this.rightRows : this.leftRows) : this.fullRows;
+        if (rows.isEmpty()) return;
+
+        // Clear trackpad mode if switching back to sticks
+        this.joySelectorActive = true;
+        this.lastCursorRight = right;
+
+        Key current = right ? this.joyRightKey : this.joyLeftKey;
+        int curRow = -1;
+        int curCol = -1;
+        if (current != null) {
+            for (int r = 0; r < rows.size(); r++) {
+                int c = rows.get(r).indexOf(current);
+                if (c >= 0) {
+                    curRow = r;
+                    curCol = c;
+                    break;
+                }
+            }
+        }
+        if (curRow < 0) {
+            curRow = Math.min(1, rows.size() - 1);
+            List<Key> row = rows.get(curRow);
+            curCol = right ? Math.min(row.size() - 1, Math.max(0, row.size() * 3 / 4)) : Math.min(row.size() - 1, row.size() / 4);
+            current = row.get(curCol);
+        } else {
+            if (dy != 0) {
+                float targetCenterX = current.x + current.width * 0.5f;
+                curRow = (curRow + dy + rows.size()) % rows.size();
+                List<Key> nextRow = rows.get(curRow);
+                int bestCol = 0;
+                float bestDist = Float.MAX_VALUE;
+                for (int c = 0; c < nextRow.size(); c++) {
+                    Key k = nextRow.get(c);
+                    float dist = Math.abs((k.x + k.width * 0.5f) - targetCenterX);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestCol = c;
+                    }
+                }
+                current = nextRow.get(bestCol);
+            } else {
+                List<Key> row = rows.get(curRow);
+                curCol = (curCol + dx + row.size()) % row.size();
+                current = row.get(curCol);
+            }
+        }
+
+        if (right) {
+            this.joyRightKey = current;
+            this.rightCursorX = current.x + current.width * 0.5f;
+            this.rightCursorY = current.y + current.height * 0.5f;
+        } else {
+            this.joyLeftKey = current;
+            this.leftCursorX = current.x + current.width * 0.5f;
+            this.leftCursorY = current.y + current.height * 0.5f;
+        }
+    }
+
     public void moveLeftCursor(float dx, float dy) {
         this.dualCursorActive = true;
         this.lastCursorRight = false;
-        this.leftCursorX = Math.max(leftX + 4, Math.min(leftX + leftWidth - 4, this.leftCursorX + dx));
+        float minX = this.splitMode ? this.leftX + 4 : this.fullX + 4;
+        float maxX = this.splitMode ? this.leftX + this.leftWidth - 4 : this.fullX + this.fullWidth - 4;
+        this.leftCursorX = Math.max(minX, Math.min(maxX, this.leftCursorX + dx));
         this.leftCursorY = Math.max(kbY + 4, Math.min(kbY + kbHeight - 4, this.leftCursorY + dy));
     }
 
     public void moveRightCursor(float dx, float dy) {
         this.dualCursorActive = true;
         this.lastCursorRight = true;
-        this.rightCursorX = Math.max(rightX + 4, Math.min(rightX + rightWidth - 4, this.rightCursorX + dx));
+        float minX = this.splitMode ? this.rightX + 4 : this.fullX + 4;
+        float maxX = this.splitMode ? this.rightX + this.rightWidth - 4 : this.fullX + this.fullWidth - 4;
+        this.rightCursorX = Math.max(minX, Math.min(maxX, this.rightCursorX + dx));
         this.rightCursorY = Math.max(kbY + 4, Math.min(kbY + kbHeight - 4, this.rightCursorY + dy));
     }
 
@@ -589,6 +670,10 @@ public class VirtualKeyboard {
         if (this.splitMode) {
             areaX = right ? this.rightX : this.leftX;
             areaW = right ? this.rightWidth : this.leftWidth;
+        } else if (!com.steamdeck.mc.input.SteamDeckInputManager.getInstance().getActiveKind().hasDualTouchpads()) {
+            // Single center touchpad (e.g. DualSense): cover the full keyboard width
+            areaX = this.fullX;
+            areaW = this.fullWidth;
         } else {
             areaW = this.fullWidth * 0.55f;
             areaX = right ? this.fullX + this.fullWidth - areaW : this.fullX;
@@ -607,6 +692,7 @@ public class VirtualKeyboard {
             this.leftCursorY = py;
         }
         this.dualCursorActive = true;
+        this.joySelectorActive = false;
         this.lastCursorRight = right;
         padTouching[side] = true;
 
@@ -661,7 +747,9 @@ public class VirtualKeyboard {
 
     public boolean triggerLeftCursorClick(Screen screen) {
         if (!this.open) return false;
-        Key key = padTouching[0] && padHoverKey[0] != null ? padHoverKey[0] : getKeyAt(this.leftCursorX, this.leftCursorY, true);
+        Key key = padTouching[0] && padHoverKey[0] != null ? padHoverKey[0]
+                : (this.joySelectorActive && this.joyLeftKey != null ? this.joyLeftKey
+                : getKeyAt(this.leftCursorX, this.leftCursorY, true));
         if (key != null) {
             this.handleKeyTap(key, screen, 0);
             playClickSound();
@@ -674,7 +762,8 @@ public class VirtualKeyboard {
     public boolean triggerRightCursorClick(Screen screen) {
         if (!this.open) return false;
         Key key = padTouching[1] && padHoverKey[1] != null ? padHoverKey[1]
-                : getKeyAt(this.rightCursorX, this.rightCursorY, !this.splitMode);
+                : (this.joySelectorActive && this.joyRightKey != null ? this.joyRightKey
+                : getKeyAt(this.rightCursorX, this.rightCursorY, !this.splitMode));
         if (key != null) {
             this.handleKeyTap(key, screen, 0);
             playClickSound();

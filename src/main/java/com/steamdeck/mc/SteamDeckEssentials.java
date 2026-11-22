@@ -110,6 +110,7 @@ public class SteamDeckEssentials implements ClientModInitializer {
             SteamDeckInputManager.getInstance().poll(client);
             com.steamdeck.mc.gui.ControllerToast.getInstance().tick();
             com.steamdeck.mc.gui.ChatLayout.tick(client);
+            com.steamdeck.mc.gui.LevelOsd.tick(client);
 
             // Record Performance & Battery Telemetry
             com.steamdeck.mc.power.PerformanceTracker.getInstance().tick(client);
@@ -134,6 +135,7 @@ public class SteamDeckEssentials implements ClientModInitializer {
                 com.steamdeck.mc.power.PowerManager.getInstance().renderAfkOverlay(graphics, screen1.width, screen1.height);
                 com.steamdeck.mc.gui.ControllerToast.getInstance().render(graphics, screen1.width, screen1.height);
                 com.steamdeck.mc.gui.TrackpadDebugOverlay.render(graphics, screen1.width, screen1.height);
+                com.steamdeck.mc.gui.LevelOsd.render(graphics, screen1.width, screen1.height);
             });
 
             // Handle touch / mouse click

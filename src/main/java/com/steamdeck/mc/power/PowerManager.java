@@ -103,7 +103,7 @@ public class PowerManager {
         int activeMenuCap = onBattery ? Math.max(15, config.menuFpsCap) : Math.max(30, config.acMenuFpsCap);
         // The trackpad mouse pointer moves once per frame: keep it smooth while a finger is on the pad
         if (com.steamdeck.mc.input.SteamDeckInputManager.getInstance().isTrackpadTouched(1)
-                && com.steamdeck.mc.input.SteamDeckInputManager.getInstance().getActiveKind().isNativeValve()) {
+                && com.steamdeck.mc.input.SteamDeckInputManager.getInstance().getActiveKind().hasNativeTouchpad()) {
             activeMenuCap = Math.max(activeMenuCap, Math.min(60, panelHz));
         }
         int baseFps;

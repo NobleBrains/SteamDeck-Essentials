@@ -53,7 +53,7 @@ public class ControllerLayoutScreen extends Screen {
     private static final int ART_Y = 24;
 
     /** Global (not per action set) modes shown as rows like Steam's "mode" lines. */
-    private enum Mode { LEFT_STICK, RIGHT_STICK, GYRO, LEFT_PAD, LEFT_PAD_GRID, RIGHT_PAD, PAD_SMOOTH, PAD_DEBUG }
+    private enum Mode { LEFT_STICK, RIGHT_STICK, GYRO, LEFT_PAD, LEFT_PAD_GRID, GRID_TOUCH_CANCEL, RIGHT_PAD, PAD_SMOOTH, PAD_DEBUG, STEAM_CHORD }
 
     /** side: 0 = left column (right aligned), 1 = right column, 2 = bottom section */
     private record Item(DeckButton button, Mode mode, int x, int y, int w, int h, int side) {
@@ -70,6 +70,7 @@ public class ControllerLayoutScreen extends Screen {
     private Item focus;
     private ActionSet set = ActionSet.IN_GAME;
     private ControllerArt.Variant variant;
+    private ControllerArt.Variant builtForVariant = null;
     private boolean variantManual = false;
 
     private float scale = 1.0f;
@@ -79,6 +80,9 @@ public class ControllerLayoutScreen extends Screen {
     private int lastMouseY = Integer.MIN_VALUE;
 
     private final Picker picker = new Picker();
+    private final ProfileModal profileModal = new ProfileModal();
+    /** Live gyro test between the grips. */
+    private final GyroCube gyroCube = new GyroCube();
     private String toast = null;
     private long toastTime = 0L;
 
@@ -96,16 +100,34 @@ public class ControllerLayoutScreen extends Screen {
     private void buildLayout() {
         items.clear();
         headers.clear();
+        ControllerArt.Variant v = variant != null ? variant : autoVariant();
+        builtForVariant = v;
+        if (v == ControllerArt.Variant.PS5) {
+            boolean edge = SteamDeckInputManager.getInstance().getActiveKind() == ControllerKind.PS5_DUALSENSE_EDGE;
+            column(0, 30, null, DeckButton.LT, DeckButton.LB);
+            if (edge) column(0, 60, null, DeckButton.L4);
+            column(0, 90, null, DeckButton.SELECT);
+            column(1, 30, null, DeckButton.RT, DeckButton.RB);
+            if (edge) column(1, 60, null, DeckButton.R4);
+            column(1, 90, null, DeckButton.START, DeckButton.QAM);
+            column(1, 120, "Zentral-Touchpad", DeckButton.RIGHT_TRACKPAD, Mode.RIGHT_PAD, Mode.PAD_SMOOTH, Mode.PAD_DEBUG);
+            bottom(0, "Linker Stick", Mode.LEFT_STICK, DeckButton.L3);
+            bottom(1, "Steuerkreuz", DeckButton.DPAD_UP, DeckButton.DPAD_DOWN, DeckButton.DPAD_LEFT, DeckButton.DPAD_RIGHT);
+            bottom(2, "Gyro", Mode.GYRO);
+            bottom(3, "Rechter Stick", Mode.RIGHT_STICK, DeckButton.R3);
+            bottom(4, "Tasten", DeckButton.A, DeckButton.B, DeckButton.X, DeckButton.Y);
+            return;
+        }
         // Left column: right-aligned, glyph on the right
         column(0, 30, null, DeckButton.LT, DeckButton.LB);
         column(0, 60, null, DeckButton.L4, DeckButton.L5);
-        column(0, 90, null, DeckButton.SELECT);
-        column(0, 108, "Linkes Trackpad", DeckButton.LEFT_TRACKPAD, Mode.LEFT_PAD, Mode.LEFT_PAD_GRID);
+        column(0, 90, null, DeckButton.SELECT, Mode.STEAM_CHORD);
+        column(0, 120, "Linkes Trackpad", DeckButton.LEFT_TRACKPAD, Mode.LEFT_PAD, Mode.LEFT_PAD_GRID, Mode.GRID_TOUCH_CANCEL);
         // Right column
         column(1, 30, null, DeckButton.RT, DeckButton.RB);
         column(1, 60, null, DeckButton.R4, DeckButton.R5);
-        column(1, 90, null, DeckButton.START);
-        column(1, 108, "Rechtes Trackpad", DeckButton.RIGHT_TRACKPAD, Mode.RIGHT_PAD, Mode.PAD_SMOOTH, Mode.PAD_DEBUG);
+        column(1, 90, null, DeckButton.START, DeckButton.QAM);
+        column(1, 120, "Rechtes Trackpad", DeckButton.RIGHT_TRACKPAD, Mode.RIGHT_PAD, Mode.PAD_SMOOTH, Mode.PAD_DEBUG);
         // Bottom: five sections
         bottom(0, "Linker Stick", Mode.LEFT_STICK, DeckButton.L3, DeckButton.LEFT_STICK_TOUCH);
         bottom(1, "Steuerkreuz", DeckButton.DPAD_UP, DeckButton.DPAD_DOWN, DeckButton.DPAD_LEFT, DeckButton.DPAD_RIGHT);
@@ -148,6 +170,7 @@ public class ControllerLayoutScreen extends Screen {
 
     private ControllerArt.Variant autoVariant() {
         ControllerKind kind = SteamDeckInputManager.getInstance().getActiveKind();
+        if (kind.isDualSense()) return ControllerArt.Variant.PS5;
         if (kind == ControllerKind.STEAM_DECK) return ControllerArt.Variant.HANDHELD;
         if (kind == ControllerKind.STEAM_VIRTUAL && PlatformDetector.getHardware().steamDeck()) return ControllerArt.Variant.HANDHELD;
         if (kind == ControllerKind.NONE && PlatformDetector.getHardware().steamDeck()) return ControllerArt.Variant.HANDHELD;
@@ -158,7 +181,7 @@ public class ControllerLayoutScreen extends Screen {
     // Labels
     // ==========================================================================================
 
-    private static String modeLabel(Mode mode) {
+    private String modeLabel(Mode mode) {
         ModConfig c = ModConfig.getInstance();
         return switch (mode) {
             case LEFT_STICK -> "Bewegen";
@@ -170,9 +193,17 @@ public class ControllerLayoutScreen extends Screen {
                 default -> "Taste";
             };
             case LEFT_PAD_GRID -> "Raster 3×3 belegen …";
-            case RIGHT_PAD -> c.nativeTrackpadCamera ? "Kamera / Mauszeiger" : "Aus (Steam Input)";
+            case RIGHT_PAD -> variant == ControllerArt.Variant.PS5
+                    ? switch (c.centerTrackpadMode) {
+                        case "CAMERA" -> "Spiel: Kamera";
+                        case "BUTTON" -> "Spiel: Nur Taste";
+                        default -> "Spiel: Aus";
+                    }
+                    : (c.nativeTrackpadCamera ? "Kamera / Mauszeiger" : "Aus (Steam Input)");
             case PAD_SMOOTH -> "Zwischenwerte: " + (c.trackpadInterpolation ? "An" : "Aus");
             case PAD_DEBUG -> "Messwerte anzeigen: " + (c.trackpadDebugOverlay ? "An" : "Aus");
+            case STEAM_CHORD -> "Steam + Stick: Lautst./Helligk.";
+            case GRID_TOUCH_CANCEL -> "Stick-Schutz obere Reihe: " + (c.gridTouchCancel ? "An" : "Aus");
         };
     }
 
@@ -186,6 +217,8 @@ public class ControllerLayoutScreen extends Screen {
             case RIGHT_PAD -> "A: Kamera/Mauszeiger ohne Steam Input an/aus";
             case PAD_SMOOTH -> "A: Zeiger & Kamera gleiten zwischen den Pad-Samples (flüssig bei jeder Bildrate)";
             case PAD_DEBUG -> "A: zeigt unten Pad-Samples/s, Jitter und Frames/s (zum Wischen messen)";
+            case GRID_TOUCH_CANCEL -> "A: Berührungen oben am Pad ignorieren, solange der Daumen auf dem linken Stick liegt";
+            case STEAM_CHORD -> "Steam halten + linker Stick hoch/runter = Lautstärke, + rechter Stick = Helligkeit (nur ohne Steam)";
         };
     }
 
@@ -207,6 +240,12 @@ public class ControllerLayoutScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickDelta) {
         if (!variantManual) variant = autoVariant();
+        if (variant != builtForVariant) {
+            DeckButton focusBtn = focus != null ? focus.button() : null;
+            Mode focusMode = focus != null ? focus.mode() : null;
+            buildLayout();
+            focus = findItem(focusBtn, focusMode);
+        }
         graphics.fill(0, 0, this.width, this.height, 0xFF000000);
 
         scale = Math.min(this.width / (float) W, this.height / (float) H);
@@ -220,6 +259,7 @@ public class ControllerLayoutScreen extends Screen {
             if (lastMouseX != Integer.MIN_VALUE) {
                 if (picker.open) picker.hover(cmx, cmy);
                 else if (grid.open) grid.hover(cmx, cmy);
+                else if (profileModal.open) profileModal.hover(cmx, cmy);
                 else {
                     for (Item it : items) {
                         if (it.contains(cmx, cmy)) {
@@ -242,6 +282,8 @@ public class ControllerLayoutScreen extends Screen {
         graphics.fill(0, 0, W, H, BG);
         renderTopBar(graphics, font);
         renderArt(graphics);
+        gyroCube.update();
+        gyroCube.render(graphics, font, ART_X + 100, 166, 12, ACCENT);
         for (Header h : headers) {
             int col = DIM;
             if (h.side() == 0) graphics.text(font, h.text().toUpperCase(), h.x() - font.width(h.text().toUpperCase()), h.y(), col, false);
@@ -252,6 +294,7 @@ public class ControllerLayoutScreen extends Screen {
         renderFooter(graphics, font);
         if (grid.open) grid.render(graphics, font);
         if (picker.open) picker.render(graphics, font);
+        if (profileModal.open) profileModal.render(graphics, font);
         renderToast(graphics, font);
 
         pose.popMatrix();
@@ -319,6 +362,8 @@ public class ControllerLayoutScreen extends Screen {
             case RIGHT_STICK -> DeckButton.RIGHT_STICK_TOUCH;
             case LEFT_PAD, LEFT_PAD_GRID -> DeckButton.LEFT_TRACKPAD;
             case RIGHT_PAD, PAD_SMOOTH, PAD_DEBUG -> DeckButton.RIGHT_TRACKPAD;
+            case STEAM_CHORD -> DeckButton.STEAM;
+            case GRID_TOUCH_CANCEL -> DeckButton.LEFT_TRACKPAD;
             case GYRO -> null;
         };
     }
@@ -340,15 +385,16 @@ public class ControllerLayoutScreen extends Screen {
         int ty = it.y() + 2;
         int gy = it.y() + 1;
         boolean hasGlyph = it.button() != null;
+        boolean ps = variant == ControllerArt.Variant.PS5;
         if (it.side() == 0) {
             int gx = it.x() + it.w() - 4 - ControllerArt.GLYPH;
-            if (hasGlyph) ControllerArt.glyph(g, font, it.button(), gx, gy);
+            if (hasGlyph) ControllerArt.glyph(g, font, it.button(), gx, gy, ps);
             int right = hasGlyph ? gx - 6 : it.x() + it.w() - 4;
             String s = font.plainSubstrByWidth(label, right - it.x() - 4);
             g.text(font, s, right - font.width(s), ty, col, false);
         } else {
             int gx = it.x() + 4;
-            if (hasGlyph) ControllerArt.glyph(g, font, it.button(), gx, gy);
+            if (hasGlyph) ControllerArt.glyph(g, font, it.button(), gx, gy, ps);
             int left = hasGlyph ? gx + ControllerArt.GLYPH + 6 : it.x() + 4;
             String s = font.plainSubstrByWidth(label, it.x() + it.w() - left - 2);
             g.text(font, s, left, ty, col, false);
@@ -386,6 +432,9 @@ public class ControllerLayoutScreen extends Screen {
         int y = H - 13;
         int x = 8;
         x = footerItem(g, font, x, y, DeckButton.START, "Weitere Einstellungen", 5);
+        var activeProf = ModConfig.getInstance().getActiveProfile();
+        String profLabel = "Profil: " + (activeProf != null ? activeProf.name : "Standard");
+        x = footerItem(g, font, x, y, DeckButton.SELECT, font.plainSubstrByWidth(profLabel, 130), 6);
         int right = W - 8;
         String[] labels = {"Zurück", "Ansicht: " + variant.getLabel(), "Leeren", "Belegen"};
         DeckButton[] glyphs = {DeckButton.B, DeckButton.Y, DeckButton.X, DeckButton.A};
@@ -456,9 +505,21 @@ public class ControllerLayoutScreen extends Screen {
                 default -> "BUTTON";
             };
             case LEFT_PAD_GRID -> { return; }
-            case RIGHT_PAD -> c.nativeTrackpadCamera = !c.nativeTrackpadCamera;
+            case RIGHT_PAD -> {
+                if (variant == ControllerArt.Variant.PS5) {
+                    c.centerTrackpadMode = switch (c.centerTrackpadMode) {
+                        case "CAMERA" -> "BUTTON";
+                        case "BUTTON" -> "OFF";
+                        default -> "CAMERA";
+                    };
+                } else {
+                    c.nativeTrackpadCamera = !c.nativeTrackpadCamera;
+                }
+            }
             case PAD_SMOOTH -> c.trackpadInterpolation = !c.trackpadInterpolation;
             case PAD_DEBUG -> c.trackpadDebugOverlay = !c.trackpadDebugOverlay;
+            case STEAM_CHORD -> { return; }
+            case GRID_TOUCH_CANCEL -> c.gridTouchCancel = !c.gridTouchCancel;
             case GYRO -> {
                 String[] order = {"AIM_ONLY", "ALWAYS", "TRACKPAD_TOUCH", "RIGHT_STICK_TOUCH"};
                 if (!c.enableGyroAiming) {
@@ -497,7 +558,8 @@ public class ControllerLayoutScreen extends Screen {
 
     private void toggleVariant() {
         variantManual = true;
-        variant = variant == ControllerArt.Variant.HANDHELD ? ControllerArt.Variant.PAD : ControllerArt.Variant.HANDHELD;
+        ControllerArt.Variant[] variants = ControllerArt.Variant.values();
+        variant = variants[(variant.ordinal() + 1) % variants.length];
         VirtualKeyboard.playClickSound();
     }
 
@@ -515,6 +577,10 @@ public class ControllerLayoutScreen extends Screen {
             grid.open = false;
             return;
         }
+        if (profileModal.open) {
+            profileModal.open = false;
+            return;
+        }
         onClose();
     }
 
@@ -526,6 +592,10 @@ public class ControllerLayoutScreen extends Screen {
         }
         if (grid.open) {
             grid.move(dx, dy);
+            return;
+        }
+        if (profileModal.open) {
+            profileModal.move(dy);
             return;
         }
         if (focus == null) {
@@ -562,6 +632,7 @@ public class ControllerLayoutScreen extends Screen {
                 // Right pad click = click under the trackpad cursor (hover already moved the focus there)
                 if (picker.open) picker.choose();
                 else if (grid.open) grid.edit();
+                else if (profileModal.open) profileModal.choose();
                 else activateFocus();
             }
             case B -> back();
@@ -635,6 +706,10 @@ public class ControllerLayoutScreen extends Screen {
             grid.click(cx, cy, event.button() == InputConstants.MOUSE_BUTTON_RIGHT);
             return true;
         }
+        if (profileModal.open) {
+            profileModal.click(cx, cy);
+            return true;
+        }
         if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
             // Right click clears like X (Minecraft 26.3 / SDL3: left = 1, right = 3)
             for (Item it : items) {
@@ -662,6 +737,7 @@ public class ControllerLayoutScreen extends Screen {
                         case 3 -> clearBinding();
                         case 4 -> toggleVariant();
                         case 5 -> openSettings();
+                        case 6 -> profileModal.open();
                         default -> {}
                     }
                     return true;
@@ -702,6 +778,12 @@ public class ControllerLayoutScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return true;
+    }
+
+    @Override
+    public void removed() {
+        gyroCube.close();
+        super.removed();
     }
 
     @Override
@@ -883,6 +965,11 @@ public class ControllerLayoutScreen extends Screen {
             entries.add(new Entry(EntryType.HEADER, "HOTBAR DIREKT", null, 0));
             for (int slot = 0; slot < 9; slot++) {
                 DeckAction a = DeckAction.hotbarSlot(slot);
+                entries.add(new Entry(EntryType.ACTION, a.getLabel(), a, 0));
+            }
+            entries.add(new Entry(EntryType.HEADER, "LAUTSTÄRKE & HELLIGKEIT", null, 0));
+            for (DeckAction a : new DeckAction[]{DeckAction.VOLUME_UP, DeckAction.VOLUME_DOWN,
+                    DeckAction.BRIGHTNESS_UP, DeckAction.BRIGHTNESS_DOWN}) {
                 entries.add(new Entry(EntryType.ACTION, a.getLabel(), a, 0));
             }
             entries.add(new Entry(EntryType.HEADER, "MAUS & MENÜ", null, 0));
@@ -1132,6 +1219,160 @@ public class ControllerLayoutScreen extends Screen {
                 String s = "Taste drücken …";
                 g.text(font, s, PX + (PW - font.width(s)) / 2, PY + 106, 0xFFFFCC55, false);
             }
+        }
+    }
+
+    // ==========================================================================================
+    // Profile selector & manager modal
+    // ==========================================================================================
+
+    private final class ProfileModal {
+        private static final int MX = 130;
+        private static final int MY = 38;
+        private static final int MW = 340;
+        private static final int MH = 250;
+        private static final int LIST_Y = MY + 28;
+        private static final int ROW_H = 18;
+        private static final int VISIBLE = 9;
+
+        boolean open = false;
+        private List<com.steamdeck.mc.config.ControllerProfile> list = List.of();
+        private int cursor = 0;
+
+        void open() {
+            reload();
+            open = true;
+            VirtualKeyboard.playClickSound();
+        }
+
+        private void reload() {
+            ControllerKind kind = currentTargetKind();
+            list = com.steamdeck.mc.config.ControllerProfile.listAll();
+            list.sort((a, b) -> {
+                int pa = a.isExactParity(kind) ? 0 : 1;
+                int pb = b.isExactParity(kind) ? 0 : 1;
+                if (pa != pb) return Integer.compare(pa, pb);
+                return a.name.compareToIgnoreCase(b.name);
+            });
+            var active = ModConfig.getInstance().getActiveProfile();
+            cursor = 0;
+            if (active != null) {
+                for (int i = 0; i < list.size(); i++) {
+                    if (active.id.equals(list.get(i).id)) {
+                        cursor = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        private ControllerKind currentTargetKind() {
+            ControllerKind active = SteamDeckInputManager.getInstance().getActiveKind();
+            if (active != null && active != ControllerKind.NONE) return active;
+            return ModConfig.getInstance().getActiveProfileKind();
+        }
+
+        void move(int dy) {
+            if (list.isEmpty()) return;
+            cursor = (cursor + dy + list.size()) % list.size();
+        }
+
+        void choose() {
+            if (cursor >= 0 && cursor < list.size()) {
+                var p = list.get(cursor);
+                ModConfig.getInstance().switchProfile(currentTargetKind(), p.id);
+                buildLayout();
+                showToast("Profil geladen: " + p.name);
+                VirtualKeyboard.playClickSound();
+            }
+            open = false;
+        }
+
+        void hover(double cx, double cy) {
+            if (cx < MX || cx > MX + MW) return;
+            int idx = (int) ((cy - LIST_Y) / ROW_H);
+            if (cy >= LIST_Y && idx >= 0 && idx < Math.min(VISIBLE, list.size())) {
+                cursor = idx;
+            }
+        }
+
+        void click(double cx, double cy) {
+            if (cx < MX || cx > MX + MW || cy < MY || cy > MY + MH) {
+                open = false;
+                return;
+            }
+            int btnY = MY + MH - 24;
+            if (cy >= btnY && cy <= btnY + 16) {
+                if (cx >= MX + 10 && cx < MX + 132) {
+                    var active = ModConfig.getInstance().getActiveProfile();
+                    String base = active != null ? active.name + " (Kopie)" : "Neues Layout";
+                    var copy = ModConfig.getInstance().duplicateActiveProfile(currentTargetKind(), base);
+                    reload();
+                    showToast("Gespeichert als: " + copy.name);
+                    VirtualKeyboard.playClickSound();
+                } else if (cx >= MX + 140 && cx < MX + 230) {
+                    if (cursor >= 0 && cursor < list.size() && list.size() > 1) {
+                        var p = list.get(cursor);
+                        if (ModConfig.getInstance().deleteProfile(p.id)) {
+                            reload();
+                            buildLayout();
+                            showToast("Profil gelöscht: " + p.name);
+                            VirtualKeyboard.playClickSound();
+                        }
+                    }
+                } else if (cx >= MX + MW - 90) {
+                    open = false;
+                    VirtualKeyboard.playClickSound();
+                }
+                return;
+            }
+            int idx = (int) ((cy - LIST_Y) / ROW_H);
+            if (cy >= LIST_Y && idx >= 0 && idx < Math.min(VISIBLE, list.size())) {
+                cursor = idx;
+                choose();
+            }
+        }
+
+        void render(GuiGraphicsExtractor g, Font font) {
+            g.fill(0, 0, W, H, 0xAA000000);
+            g.fill(MX, MY, MX + MW, MY + MH, 0xFF151C25);
+            g.fill(MX, MY, MX + MW, MY + 1, ACCENT);
+            g.fill(MX, MY + MH - 1, MX + MW, MY + MH, ACCENT);
+            g.fill(MX, MY, MX + 1, MY + MH, ACCENT);
+            g.fill(MX + MW - 1, MY, MX + MW, MY + MH, ACCENT);
+
+            ControllerKind kind = currentTargetKind();
+            g.text(font, "Controller-Profile (" + kind.getLabel() + ")", MX + 10, MY + 8, 0xFFFFFFFF, false);
+
+            var active = ModConfig.getInstance().getActiveProfile();
+            String activeId = active != null ? active.id : "";
+            int shown = Math.min(VISIBLE, list.size());
+            for (int i = 0; i < shown; i++) {
+                var p = list.get(i);
+                int y = LIST_Y + i * ROW_H;
+                boolean focused = i == cursor;
+                boolean isActive = activeId.equals(p.id);
+                if (focused) g.fill(MX + 8, y, MX + MW - 8, y + ROW_H - 2, FOCUS);
+                else if (isActive) g.fill(MX + 8, y, MX + MW - 8, y + ROW_H - 2, 0xFF1C2D3D);
+
+                String prefix = isActive ? "● " : "  ";
+                g.text(font, font.plainSubstrByWidth(prefix + p.name, 165), MX + 12, y + 4,
+                        focused ? BG : (isActive ? ACCENT : TEXT), false);
+
+                boolean exact = p.isExactParity(kind);
+                String badge = exact ? "Kompatibel" : com.steamdeck.mc.config.ControllerProfile.parityLabel(p.parityGroup);
+                int bCol = focused ? BG : (exact ? 0xFF66EE99 : DIM);
+                g.text(font, badge, MX + MW - 12 - font.width(badge), y + 4, bCol, false);
+            }
+
+            int btnY = MY + MH - 24;
+            g.fill(MX + 10, btnY, MX + 132, btnY + 16, 0xFF1E3A4A);
+            g.centeredText(font, "+ Kopie speichern", MX + 71, btnY + 4, 0xFF00FFCC);
+            boolean canDel = list.size() > 1;
+            g.fill(MX + 140, btnY, MX + 230, btnY + 16, canDel ? 0xFF3A1E22 : 0xFF1E2228);
+            g.centeredText(font, "Löschen", MX + 185, btnY + 4, canDel ? 0xFFFF7777 : DIM);
+            g.fill(MX + MW - 90, btnY, MX + MW - 10, btnY + 16, 0xFF232C38);
+            g.centeredText(font, "Schließen", MX + MW - 50, btnY + 4, TEXT);
         }
     }
 }

@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -70,7 +71,6 @@ public class ModConfig {
     public int configVersion = 0;
     public boolean enable8WayStickMapping = true;
     public float trackpadSensitivity = 1.0f; // Native trackpad camera: 1.0 = one full swipe across the pad turns ~90 degrees
-    public boolean trackpadClickJump = true;
     public boolean enableHotbarHaptics = true; // Haptic rumble on trackpad per hotbar scroll
     // Trackpad click detection (like Steam Input "click pressure"): "HARDWARE" = the pad's own click,
     // "PRESSURE" = click as soon as the measured pressure reaches the threshold below (0..1, per pad)
@@ -93,9 +93,21 @@ public class ModConfig {
     public boolean enableRightStickRadialMenu = true; // 3-page Radial Menu on Right Joystick
     public float rightStickCameraSpeed = 180.0f; // Degrees per second at full right-stick deflection (when the radial menu is off)
 
-    // Native Valve controller support without Steam (Steam Controller 2026 / 2015, Steam Deck via SDL HIDAPI)
+    // Native controller support without Steam (Steam Controller 2026 / 2015, Steam Deck, PS5 DualSense)
     public boolean enableNativeSteamControllers = true; // Enables SDL's HIDAPI driver for Steam Controllers
     public boolean nativeTrackpadCamera = true; // Right trackpad turns the camera when Steam Input is NOT active
+    // Single center touchpad (e.g. PS5 DualSense): "CAMERA", "BUTTON", "OFF"
+    public String centerTrackpadMode = "CAMERA";
+    public boolean centerTrackpadMenuMouse = true; // Center touchpad acts as mouse cursor in menus by default
+    public float leftTriggerThreshold = 0.30f; // Analog trigger pull threshold (0.05..0.95)
+    public float rightTriggerThreshold = 0.30f;
+    // DualSense adaptive triggers: "WEAPON_CLICK", "RESISTANCE", "OFF"
+    public String dualSenseTriggerMode = "WEAPON_CLICK";
+    public float dualSenseTriggerResistance = 0.65f; // Resistance force (0.10..1.00)
+    public boolean adaptiveTriggerBlockHardness = true; // R2 resistance scales with mined block hardness
+    public boolean adaptiveTriggerBowTension = true; // R2 progressive tension when drawing bow/crossbow/trident
+    public boolean adaptiveTriggerShield = true; // L2 firm resistance when blocking with a shield
+    public boolean adaptiveTriggerLowDurability = true; // R2 heavy click warning when held tool < 10% durability
     public boolean steamInputBridgeOnDesktop = false; // Intercept the Steam Input bridge keys ([ ] \ / F13 F14) in DESKTOP mode too
 
     // Steam Input Hardware Bridge (Rücktasten & Stick-Touch)
@@ -127,6 +139,10 @@ public class ModConfig {
     public boolean releaseControllerWhenUnfocused = true;
     /** Chat position: AUTO (top while the controller is used, for the on-screen keyboard), TOP, BOTTOM. */
     public String chatLayout = "AUTO";
+    /** Configurator drawing: pixel version of Steam's controller outlines (false = own simple drawing). */
+    public boolean originalControllerArt = true;
+    /** 3x3 grid: ignore touches on the top row that come from the thumb resting on the left stick. */
+    public boolean gridTouchCancel = true;
     /** Shows the live pad sample rate / frame rate line (debugging). */
     public boolean trackpadDebugOverlay = false;
     public boolean aimItemsOnly = true; // legacy, see gyroActivation
@@ -146,8 +162,14 @@ public class ModConfig {
     public boolean enablePerformanceTracking = true;
     public int performanceTrackIntervalSeconds = 5;
 
-    // Action Sets: Map<ActionSetName, Map<ButtonName, ActionName>>
+    // Action Sets: Map<ActionSetName, Map<ButtonName, ActionName>> (live working copy of activeProfile)
     public Map<String, Map<String, String>> actionSets = new HashMap<>();
+
+    // Per-controller active profile IDs: Map<ControllerKind.name(), profileId>
+    public Map<String, String> activeProfiles = new HashMap<>();
+
+    private transient ControllerProfile activeProfile;
+    private transient com.steamdeck.mc.input.ControllerKind activeProfileKind = com.steamdeck.mc.input.ControllerKind.STEAM_DECK;
 
     public com.steamdeck.mc.platform.DeviceMode getDeviceMode() {
         return com.steamdeck.mc.platform.DeviceMode.parse(this.deviceMode);
@@ -176,6 +198,7 @@ public class ModConfig {
                 ModConfig config = GSON.fromJson(reader, ModConfig.class);
                 if (config != null) {
                     config.validate();
+                    config.migrateOrLoadInitialProfile();
                     config.save(); // writes newly added options into existing config files
                     return config;
                 }
@@ -186,11 +209,156 @@ public class ModConfig {
         ModConfig config = new ModConfig();
         config.configVersion = 2;
         config.initDefaultActionSets();
+        config.migrateOrLoadInitialProfile();
         config.save();
         return config;
     }
 
+    /**
+     * Preserves any existing user-configured layout on first upgrade by saving it into
+     * {@code profiles/user_default.json} for Valve controllers, without overwriting it.
+     */
+    private void migrateOrLoadInitialProfile() {
+        if (this.activeProfiles == null) this.activeProfiles = new HashMap<>();
+        if (this.activeProfiles.isEmpty()) {
+            ControllerProfile migrated = new ControllerProfile();
+            migrated.id = "user_default";
+            migrated.name = "Mein Layout";
+            migrated.parityGroup = "DUAL_PAD";
+            migrated.copyFromConfig(this);
+            ControllerProfile.save(migrated);
+            this.activeProfiles.put(com.steamdeck.mc.input.ControllerKind.STEAM_DECK.name(), migrated.id);
+            this.activeProfiles.put(com.steamdeck.mc.input.ControllerKind.STEAM_CONTROLLER_2026.name(), migrated.id);
+            this.activeProfiles.put(com.steamdeck.mc.input.ControllerKind.STEAM_CONTROLLER_2015.name(), migrated.id);
+            this.activeProfiles.put(com.steamdeck.mc.input.ControllerKind.STEAM_VIRTUAL.name(), migrated.id);
+            this.activeProfile = migrated;
+            this.activeProfileKind = com.steamdeck.mc.input.ControllerKind.STEAM_DECK;
+            SteamDeckEssentials.LOGGER.info("[PROFILE] Migrated existing layout into profile '{}'", migrated.name);
+        } else {
+            activateProfileFor(com.steamdeck.mc.input.ControllerKind.STEAM_DECK);
+        }
+    }
+
+    public synchronized ControllerProfile getActiveProfile() {
+        return activeProfile;
+    }
+
+    public synchronized com.steamdeck.mc.input.ControllerKind getActiveProfileKind() {
+        return activeProfileKind;
+    }
+
+    /**
+     * Activates the saved profile for {@code kind} (creating a controller-appropriate default on first
+     * sight of that controller type). Saves the previous profile before switching.
+     */
+    public synchronized void activateProfileFor(com.steamdeck.mc.input.ControllerKind kind) {
+        if (kind == null || kind == com.steamdeck.mc.input.ControllerKind.NONE) return;
+        if (this.activeProfile != null && kind == this.activeProfileKind) return;
+        if (this.activeProfile != null) {
+            this.activeProfile.copyFromConfig(this);
+            ControllerProfile.save(this.activeProfile);
+        }
+        if (this.activeProfiles == null) this.activeProfiles = new HashMap<>();
+
+        String profileId = this.activeProfiles.get(kind.name());
+        ControllerProfile loaded = ControllerProfile.load(profileId);
+        if (loaded == null) {
+            // Controllers with full parity share the default ID if one already exists
+            String defaultId = switch (ControllerProfile.parityGroupFor(kind)) {
+                case "SINGLE_PAD" -> "ps5_default";
+                case "STANDARD" -> "gamepad_default";
+                default -> this.activeProfiles.getOrDefault(
+                        com.steamdeck.mc.input.ControllerKind.STEAM_DECK.name(), "deck_default");
+            };
+            loaded = ControllerProfile.load(defaultId);
+            if (loaded == null) {
+                loaded = ControllerProfile.createDefaultFor(kind, this);
+                ControllerProfile.save(loaded);
+            }
+            this.activeProfiles.put(kind.name(), loaded.id);
+        }
+        this.activeProfile = loaded;
+        this.activeProfileKind = kind;
+        loaded.applyToConfig(this);
+        SteamDeckEssentials.LOGGER.info("[PROFILE] Activated '{}' ({}) for {}",
+                loaded.name, loaded.id, kind.getLabel());
+        saveConfigOnly();
+    }
+
+    /** Switches the active profile for {@code kind} to an existing profile ID. */
+    public synchronized boolean switchProfile(com.steamdeck.mc.input.ControllerKind kind, String profileId) {
+        if (kind == null || kind == com.steamdeck.mc.input.ControllerKind.NONE) {
+            kind = this.activeProfileKind;
+        }
+        ControllerProfile target = ControllerProfile.load(profileId);
+        if (target == null) return false;
+        if (this.activeProfile != null) {
+            this.activeProfile.copyFromConfig(this);
+            ControllerProfile.save(this.activeProfile);
+        }
+        if (this.activeProfiles == null) this.activeProfiles = new HashMap<>();
+        this.activeProfiles.put(kind.name(), target.id);
+        this.activeProfile = target;
+        this.activeProfileKind = kind;
+        target.applyToConfig(this);
+        saveConfigOnly();
+        return true;
+    }
+
+    /** Saves a copy of the current layout under a new profile name and activates it. */
+    public synchronized ControllerProfile duplicateActiveProfile(com.steamdeck.mc.input.ControllerKind kind, String newName) {
+        if (kind == null || kind == com.steamdeck.mc.input.ControllerKind.NONE) {
+            kind = this.activeProfileKind;
+        }
+        String baseId = ControllerProfile.sanitizeId(newName);
+        String id = baseId;
+        int n = 2;
+        while (ControllerProfile.load(id) != null) {
+            id = baseId + "_" + n++;
+        }
+        ControllerProfile copy = new ControllerProfile();
+        copy.id = id;
+        copy.name = newName;
+        copy.parityGroup = ControllerProfile.parityGroupFor(kind);
+        copy.copyFromConfig(this);
+        ControllerProfile.save(copy);
+        if (this.activeProfiles == null) this.activeProfiles = new HashMap<>();
+        this.activeProfiles.put(kind.name(), copy.id);
+        this.activeProfile = copy;
+        this.activeProfileKind = kind;
+        saveConfigOnly();
+        return copy;
+    }
+
+    /** Deletes a profile by ID (refuses if it is the last remaining profile). */
+    public synchronized boolean deleteProfile(String profileId) {
+        List<ControllerProfile> all = ControllerProfile.listAll();
+        if (all.size() <= 1) return false;
+        if (!ControllerProfile.delete(profileId)) return false;
+        if (this.activeProfiles != null) {
+            this.activeProfiles.entrySet().removeIf(e -> profileId.equals(e.getValue()));
+        }
+        if (this.activeProfile != null && profileId.equals(this.activeProfile.id)) {
+            ControllerProfile fallback = ControllerProfile.listAll().get(0);
+            this.activeProfile = fallback;
+            if (this.activeProfiles != null) {
+                this.activeProfiles.put(this.activeProfileKind.name(), fallback.id);
+            }
+            fallback.applyToConfig(this);
+        }
+        saveConfigOnly();
+        return true;
+    }
+
     public synchronized void save() {
+        if (this.activeProfile != null) {
+            this.activeProfile.copyFromConfig(this);
+            ControllerProfile.save(this.activeProfile);
+        }
+        saveConfigOnly();
+    }
+
+    private void saveConfigOnly() {
         Path path = getConfigPath();
         try {
             if (path.getParent() != null) {
@@ -344,6 +512,15 @@ public class ModConfig {
         this.rightTrackpadClickPressure = clamp(this.rightTrackpadClickPressure, 0.01f, 1.0f);
         this.leftTrackpadHapticLevel = Math.max(0, Math.min(5, this.leftTrackpadHapticLevel));
         this.rightTrackpadHapticLevel = Math.max(0, Math.min(5, this.rightTrackpadHapticLevel));
+        if (!java.util.Set.of("CAMERA", "BUTTON", "OFF").contains(this.centerTrackpadMode)) {
+            this.centerTrackpadMode = "CAMERA";
+        }
+        this.leftTriggerThreshold = clamp(this.leftTriggerThreshold, 0.05f, 0.95f);
+        this.rightTriggerThreshold = clamp(this.rightTriggerThreshold, 0.05f, 0.95f);
+        if (!java.util.Set.of("WEAPON_CLICK", "RESISTANCE", "OFF").contains(this.dualSenseTriggerMode)) {
+            this.dualSenseTriggerMode = "WEAPON_CLICK";
+        }
+        this.dualSenseTriggerResistance = clamp(this.dualSenseTriggerResistance, 0.10f, 1.0f);
         if (this.performanceTrackIntervalSeconds < 1) this.performanceTrackIntervalSeconds = 1;
         if (this.unfocusedFpsCap < 1) this.unfocusedFpsCap = 5;
         if (this.batteryChunkThreads < 1) this.batteryChunkThreads = 1;

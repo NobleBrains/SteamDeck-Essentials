@@ -29,6 +29,10 @@ public enum DeckButton {
     SELECT("Select (Ansicht)"),
     LEFT_STICK_TOUCH("L-Stick Touch"),
     RIGHT_STICK_TOUCH("R-Stick Touch"),
+    // Steam button: chord key (held + left stick = volume, + right stick = brightness), not bindable.
+    // Only reaches the game without Steam running (Steam keeps it for itself otherwise).
+    STEAM("Steam-Taste"),
+    QAM("⋯ Schnellmenü"),
     // Virtual buttons: left trackpad split into a 3x3 grid (mode "GRID_3X3"), row by row from top left
     LPAD_GRID_1("Raster 1 (oben links)"),
     LPAD_GRID_2("Raster 2 (oben)"),

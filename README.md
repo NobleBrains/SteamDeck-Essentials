@@ -1,6 +1,8 @@
 # SteamDeck Essentials (Minecraft 26.3 Fabric Mod)
 
-Eine umfassende All-in-One-Optimierungsmod speziell für das Steam Deck (LCD & OLED) unter Minecraft 26.3 (SDL3) – mit Desktop-Modus für den PC und nativer Unterstützung des Steam Controllers (2026) ohne Steam.
+Eine umfassende All-in-One-Optimierungs- und Controller-Mod für **Steam Deck (LCD & OLED)**, **Steam Controller (2026 & 2015)** und **PS5 DualSense / DualSense Edge** unter Minecraft 26.3 (SDL3) – mit sauberer Trennung von Handheld- und Desktop-Modus sowie nativer Controller-Unterstützung ohne Steam.
+
+> **Für Entwickler & Coding-Agents:** Siehe [AGENTS.md](AGENTS.md) für Projekt-Philosophie, vollständige Ordner-/Datei-Landkarte, Architektur-Datenflüsse und Build-Befehle, sowie [docs/FINDINGS.md](docs/FINDINGS.md) für Hardware-/SDL3-/HID-Details und [CHANGELOG.md](CHANGELOG.md) für die Änderungshistorie.
 
 ---
 
@@ -13,23 +15,25 @@ Die Mod läuft in einem von zwei Modi:
 | AFK-Dimming, Low-Battery-Saver, Chunk-Thread-Limit | ✅ | ❌ |
 | Akku-HUD (Pause/F3), CSV-Performance-Tracker | ✅ | ❌ |
 | Suspend-Save (Welt speichern beim Standby) | ✅ | ❌ |
-| Chat oben + invertiertes Scrollen (für die Bildschirmtastatur) | ✅ | ❌ Vanilla |
-| OSK automatisch öffnen (manuell per `F12` immer möglich) | ✅ | ❌ |
+| Chat oben + invertiertes Scrollen (auto bei Controller-Nutzung) | ✅ | ✅ (nur bei `chatLayout: AUTO` + Controller) |
+| OSK automatisch öffnen (manuell per `F12` immer möglich) | ✅ | ✅ (bei Controller-Chat-Öffnung) |
 | Steam-Input-Bridge-Tasten (`[ ] \ / F13 F14`) abfangen | ✅ | ❌ (optional: `steamInputBridgeOnDesktop`) |
 | Steam-Layout automatisch installieren | ✅ | ❌ (Button im Tab `⚙️ Bridge`) |
-| Controller-Engine, Action-Sets, Radial-Menü, Gyro, Haptik | ✅ | ✅ |
+| Controller-Engine, Profile, Radial-Menü, Gyro, Haptik/Trigger | ✅ | ✅ |
 
 * **Automatische Erkennung (`deviceMode: "AUTO"`):** über die DMI-Kennungen in `/sys/class/dmi/id` (funktioniert auch in der Prism-Flatpak-Sandbox). Erkannt werden Steam Deck LCD (`Jupiter`, 60-Hz-Cap) und OLED (`Galileo`, 90-Hz-Cap), außerdem ROG Ally, Legion Go, MSI Claw, AYANEO, OneXPlayer, GPD Win und ZOTAC Zone. Fallback: Umgebungsvariable `SteamDeck=1` (SteamOS Game Mode). Laptops gelten als Desktop.
 * **Manuell überschreiben:** Im Spiel unter `Pausemenü → 🎮 Controller → ☰ Weitere Einstellungen → ⚡ Akku & Eco → Gerätemodus` (Auto → Handheld → Desktop) oder in der Config `"deviceMode": "HANDHELD"` / `"DESKTOP"`. Der Wechsel greift sofort, ohne Neustart.
-* Der aktive Modus steht im Log (`[PLATFORM]`) und im F3-HUD.
 
-## 🎮 0b. Steam Controller (2026) & Steam Deck ohne Steam
-* SDL3 (in Minecraft eingebaut) kann Valve-Controller über seinen **HIDAPI-Treiber** direkt lesen. Die Mod aktiviert dafür `SDL_JOYSTICK_HIDAPI_STEAM=1` (abschaltbar mit `enableNativeSteamControllers`; eine selbst gesetzte Umgebungsvariable hat Vorrang).
-* **Geräteauswahl:** native Valve-Controller (Steam Deck, Steam Controller 2026 `28de:1302–1305`, 2015) werden vor dem virtuellen Steam-Input-Gamepad und anderen Gamepads bevorzugt – auch wenn sie später eingesteckt werden.
-* **Trackpad-Kamera:** Ohne Steam Input ist das rechte Trackpad keine Maus mehr. Bei nativen Valve-Controllern dreht es deshalb direkt die Kamera (`nativeTrackpadCamera`, Empfindlichkeit über „Trackpad Sensitivität“: 100 % = ein Wisch über das ganze Pad ≈ 90°).
-* **Rechter Stick als Kamera:** Wenn das Radial-Menü aus ist, steuert der rechte Stick die Kamera pro Frame (`rightStickCameraSpeed`, Standard 180°/s, quadratische Kennlinie).
-* **Diagnose:** Beim Verbinden schreibt die Mod Name, Vendor/Product-ID, Typ, Anzahl Touchpads, Gyro/Accel, Rumble und Zusatztasten (L4/R4/L5/R5, Touchpad, MISC) ins Log (`[INPUT] Connected SDL gamepad ...`).
-* **Hinweis:** Läuft Steam im Hintergrund mit Desktop-Layout, kann Steam das Trackpad zusätzlich als Maus nutzen (doppelte Kamerabewegung) – dann `nativeTrackpadCamera` ausschalten oder Steam beenden. Linux ≥ 7.3 bringt zusätzlich den Kernel-Treiber `hid-steam` für den 2026-Controller mit.
+## 🎮 0b. Native Controller ohne Steam (Steam Deck, Steam Controller 2026 & PS5 DualSense)
+* **Steam Deck & Steam Controller (2026 „Triton“ / 2015):** SDL3 liest Valve-Controller über seinen HIDAPI-Treiber direkt (`SDL_JOYSTICK_HIDAPI_STEAM=1`, abschaltbar mit `enableNativeSteamControllers`). Trackpad-Kamera, 3×3-Raster, Druck-Klick, Trackpad-Aktuator-Haptik (`0x82`) und automatisches Abschalten des Firmware-Lizard-Modes laufen nativ.
+* **PS5 DualSense & DualSense Edge (`054c:0ce6` / `054c:0df2`):**
+  * **Zentral-Touchpad:** in Menüs standardmäßig als Mauszeiger aktiv; im Spiel frei konfigurierbar (`Kamera`, `Nur Taste` oder `Aus`).
+  * **Analoge Trigger & Adaptive Triggers (L2/R2):** einstellbare Auslöseschwellen (0–100 % mit Live-Balken) sowie echter Gegendruck über SDL3 `SDL_SendGamepadEffect` – einzeln togglebar für **Block-Härte beim Abbauen**, **Bogen-/Armbrust-/Dreizack-Spannung**, **Schild-Block**, **Werkzeug-Haltbarkeits-Warnung (< 10 %)** und Basis-Klickpunkt/Dauerwiderstand.
+  * **Eigene PS5-Ansicht:** Pixel-Art-Umriss, Live-Fingerpunkt auf dem Touchpad und PlayStation-Glyphen (`✕ ○ □ △`).
+* **Per-Controller-Profile & Parität (`config/steamdeck_essentials/profiles/*.json`):**
+  * Jeder Controller-Typ speichert und lädt sein eigenes aktives Layout (z. B. Steam Deck mit `R-Stick = Radial-Menü`, PS5 DualSense mit `R-Stick = Kamera`).
+  * Bestehende Nutzer-Layouts werden beim ersten Start automatisch nach `user_default.json` migriert und nie überschrieben.
+  * Controller mit gleicher Parität (`Steam Deck` ↔ `Steam Controller 2026/2015`) teilen Layouts 1:1; beim Laden zwischen unterschiedlichen Controllern bleiben gemeinsame Tasten erhalten, während fehlende Tasten ignoriert werden.
 
 ---
 
@@ -42,69 +46,34 @@ Die Mod läuft in einem von zwei Modi:
   * Stufenloses Absenken der FPS bei Inaktivität (Akku: ab 2 Min. bis -80 % / 15 FPS; Netzbetrieb: ab 4 Min. bis -50 % / 40 FPS).
   * Sanftes OLED-Screen-Dimming (65 % im Akkubetrieb, 30 % im Netzbetrieb) und Reduktion der Hintergrund-Chunk-Threads auf 1 Idle-Worker.
   * Sofortiges Aufwachen (0 ms Latenz) bei jeder Stick-, Button-, Trackpad-, Touch- oder Tastatureingabe.
-* *Alle Funktionen dieses Abschnitts sind nur im **Handheld-Modus** aktiv.*
-* **Low-Battery Eco-Saver:**
-  * Automatischer Batterieschutz bei ≤ 20 % (60 FPS Cap) und ≤ 10 % Akku (45 FPS Cap) mit dezentem HUD-Hinweis.
-* **Dynamic Chunk Threading:**
-  * Begrenzt Hintergrund-Chunk-Compiler (`SectionRenderDispatcher`) auf 2 Threads im Akkubetrieb bzw. 3 Threads im Netzbetrieb für konstante 90/60 FPS ohne CPU-Lastspitzen.
-* **Battery-Monitor, HUD & CSV-Telemetrie:**
-  * Liest Akkustand, Watt-Verbrauch, Spannung und Restlaufzeit aus `/sys/class/power_supply/BAT0/`.
-  * Anzeige oben links im Pause-Menü und im F3-Diagnose-HUD sowie optionaler CSV-Performance-Tracker (`steamdeck_perf_log.csv`).
-* **Suspend/Sleep-Hook:**
-  * Erkennt SteamOS Sleep über `org.freedesktop.login1.Manager` (`PrepareForSleep`) und Watchdog; pausiert und speichert das Singleplayer-Spiel sofort.
+* **Low-Battery Eco-Saver:** Automatischer Batterieschutz bei ≤ 20 % (60 FPS Cap) und ≤ 10 % Akku (45 FPS Cap).
+* **Dynamic Chunk Threading:** Begrenzt Hintergrund-Chunk-Compiler auf 2 Threads (Akku) bzw. 3 Threads (AC).
+* **Battery-Monitor, HUD & CSV-Telemetrie:** Liest `/sys/class/power_supply/BAT0/` (Pausemenü & F3) und schreibt optional `steamdeck_perf_log.csv`.
+* **Suspend/Sleep-Hook:** Erkennt SteamOS Sleep über `org.freedesktop.login1.Manager` (`PrepareForSleep`) und Watchdog; pausiert und speichert Singleplayer-Welten sofort.
 
 ---
 
-## 🕹️ 1b. Controller-Konfigurator (`Pausemenü → 🎮 Controller`)
-* **Ansicht wie Steam Input:** eigene Zeichnung des Steam Decks bzw. Steam Controllers in der Mitte, jede Taste mit Glyphe und Belegung drumherum, unten Sticks, Steuerkreuz, Gyro und Tasten. Gedrückte Tasten leuchten live auf.
-* **Action-Sets** (Im Spiel, Menüs & Inventar, Zielen) mit L1/R1 wechseln. **A** belegt, **X** leert, **Y** wechselt die Zeichnung, **Menü** öffnet die weiteren Einstellungen (Eco, Bridge, Trackpads), **B** geht zurück.
-* **Taste drücken = hinspringen:** R4, L2, Stick-Klicks usw. springen direkt zu ihrer Zeile.
-* **Auswahlliste:** Spiel-Aktionen, Hotbar-Slots 1–9, Maus & Menü, Tastatur-Tasten (Taste drücken, bereits benutzte Tasten, Presets). Rechts neben jeder Aktion stehen die Tasten, die sie in diesem Action-Set schon belegen. Pro Taste: Haptik und „Gedrückt halten = wiederholen“.
-* **Kein Aussperren:** Der Konfigurator bekommt die Controller-Tasten direkt, nicht über die Belegung im Set „Menüs“.
-* **Linkes Trackpad als Raster 3×3** (native Controller): neun zusätzliche, pro Action-Set belegbare Felder. Im Spiel standardmäßig Hotbar-Slot 1–9. Beim Auflegen des Daumens erscheint ein Overlay mit Item-Icons, beim Feldwechsel gibt es einen Haptik-Tick, der Klick löst aus.
-* **Controller-Hinweis** (wie bei Steam) unten rechts beim Verbinden und Trennen, mit Typ und Akkustand, plus einmalige Warnung bei schwachem Controller-Akku (≤ 15 %).
+## 🕹️ 2. Controller-Konfigurator (`Pausemenü → 🎮 Controller`)
+* **Ansicht wie Steam Input:** Pixel-Art-Zeichnung für Steam Deck, Steam Controller und PS5 DualSense mit Live-Tasten-Highlight, Touchpad-Fingerpunkt und 3D-Gyro-Testquader.
+* **Action-Sets** (`Im Spiel`, `Menüs & Inventar`) mit `L1/R1` wechseln. `A` belegt, `X` leert, `Y` wechselt die Ansicht, `Start/Menü` öffnet weitere Einstellungen, `Select/Create` öffnet die **Profil-Verwaltung** (Wechseln, Kopie speichern, Löschen), `B` geht zurück.
+* **Linkes Trackpad als Raster 3×3** (Dual-Pad-Controller): neun zusätzliche, pro Action-Set belegbare Felder mit Item-Icon-Overlay und Stick-Schutz für die obere Reihe (`gridTouchCancel`).
+* **Controller-Toast** unten rechts beim Verbinden/Trennen inkl. Controller-Akkustand und Low-Battery-Warnung.
 
-## 🎮 2. Input-, Action-Set- & Controller-Engine (`com.steamdeck.mc.input`)
-* **3 Kontext-basierte Action-Sets (`IN_GAME`, `MENUS`, `AIMING`):**
-  * Automatischer Wechsel zwischen Gameplay, Inventar/Menüs und Bogen-/Fernrohr-Zielen.
-  * Frei konfigurierbar über das In-Game-Dashboard (`Pausemenü -> 🎮 Controller`), inklusive **eigener Tastatur-Tasten mit Spitznamen** (SDL3-Scancodes & Presets für Minimap, VoiceChat, Wegpunkte, etc.).
-* **Vollständige Menü- & Inventar-Navigation per Controller:**
-  * **Menüs & Pausemenü:** Navigation per linkem Stick oder D-Pad (inkl. Auto-Repeat), Bestätigung mit jedem auf `Mausklick Links` (`A`, `R2`) belegten Button.
-  * **Inventar Slot-Snapping (`AbstractContainerScreen`):** In Kisten, Öfen, Werkbänken und im Inventar springen D-Pad und linker Stick präzise von Slot zu Slot, begleitet von einer dynamischen Button-Legende am unteren Bildschirmrand.
-  * **Gamemode-Switcher (`F3+F4`):** Direktes Umschalten per D-Pad/Stick und Bestätigen mit `A`.
-* **3-Ebenen Radial-Menü auf dem rechten Joystick (Umschalten per `R3`):**
-  * **Ebene 1 (`🎒 Hotbar 1–9`):** 9 Segmente mit 3D-Item-Icons, Haltbarkeit und sofortiger Live-Auswahl.
-  * **Ebene 2 (`🖥️ F-Tasten`):** `F1`, `F2` (Screenshot), `F3`, `F3+2` (FPS/TPS-Graph), `F5`, `F8`, `F3+F4`, `F3+F6`.
-  * **Ebene 3 (`🔧 F3+ Utilities`):** `F3+G` (Chunk-Grid), `F3+B` (Hitboxen), `F3+H` (Tooltips), `F3+A`, `F3+N`, `F3+D`, `F3+C`, `F3+T`.
-* **Steam Input Hardware-Bridge & 1-Klick-Layout-Installer:**
-  * Volle Unterstützung für alle 4 Rücktasten (**L4, R4, L5, R5**), beide **Trackpad-Klicks** und kapazitive **Stick-Touch-Sensoren** (`L-Stick Touch`, `R-Stick Touch`).
-  * Beim Spielstart wird die mitgelieferte `controller_neptune_steamdeck_essentials.vdf` nur als **Vorlage** installiert (in Steam unter „Vorlagen“ wählbar). Eigene Layouts bleiben unangetastet.
-  * Der 1-Klick-Button im Tab `⚙️ Bridge` setzt das Layout zusätzlich als aktives Layout für Prism Launcher / Minecraft. Ein vorhandenes eigenes Layout wird vorher gesichert (`controller_neptune.vdf.bak-steamdeck-essentials`, weitere Sicherungen mit Zeitstempel).
-* **Direktionale LRA-Haptik & Gameplay-Haptik:**
-  * Seitengetrennte Haptik-Impulse beim Hotbar-Scrollen (inkl. Auto-Repeat beim Halten), beim Bogen-/Armbrust-Spannen und bei niedriger Werkzeug-Haltbarkeit (< 10 %).
-
----
-
-## 🎯 3. Frame-synchrones 90-Hz Contextual Gyro-Aiming (`com.steamdeck.mc.input.gyro`)
-* **Multi-Provider-Architektur (60/90 Hz Render-Frame-synchron):**
-  * Linux IIO (`/sys/bus/iio/devices/iio:device*`)
-  * Native SDL3 Gamepad- & Sensor-API
-  * Universal DSU / Cemuhook Motion Server (`127.0.0.1:26760` mit verlustfreier Paket-Akkumulation)
-* **Zustandsbasiertes Triggern:**
-  * Aktiv beim Spannen/Nutzen von Bogen (`BOW`), Armbrust (`CROSSBOW`), Dreizack (`TRIDENT`) oder Fernrohr (`SPYGLASS`).
-  * Schaltet während des Zielens automatisch das Radial-Menü auf dem rechten Stick zugunsten von Präzisions-Zielen (2 % Deadzone) um.
-
----
+## 🎯 3. Frame-synchrones 60/90-Hz Gyro-Aiming (`com.steamdeck.mc.input.gyro`)
+* Multi-Provider (`SDL2GyroProvider`, `IIOGyroProvider`, `DsuGyroProvider`), umschaltbar zwischen *Nur beim Zielen*, *Immer*, *Trackpad berührt* und *R-Stick berührt*.
 
 ## ⌨️ 4. On-Screen Keyboard & Handheld GUI (`com.steamdeck.mc.gui`)
-* **SteamOS Dual-Cursor Trackpad- & Stick-Tippen (60/90 Hz):**
-  * Gleichzeitiges Tippen mit beiden Daumen über zwei Fadenkreuze (Türkis links, Amber rechts) und Auslösen per `LT`/`LB`/`Trackpad L` bzw. `RT`/`RB`/`Trackpad R`.
-  * Integrierte **`TAB`-Taste** (für Befehls-Autovervollständigung) sowie **deutsche Umlaute** (`ä`, `ö`, `ü`, `ß` im `?123`-Modus auf `A`, `O`, `U`, `S`).
-* **Smart Auto-Open & Handheld-Tooltip-Fix:**
-  * Öffnet sich automatisch im Chat, bleibt im Kreativ-Inventar dezent als `KB`-Button eingeklappt und verhindert abgeschnittene Tooltips bei 1280×800 (16:10).
+* **SteamOS Dual-Pad Fadenkreuze** auf Steam Deck / Steam Controller, **diskrete blaue/orange Joystick-Tastenauswahl** (`L3/L2/L1` & `R3/R2/R1` / `A`) auf allen Controllern, sowie normale **Touchpad-Maus** auf dem PS5 DualSense.
+* Feste SteamOS-Hotkeys (`A` Tippen, `X` Löschen, `Y` Leerzeichen, `Start` Senden, `B` Tastatur aus), `TAB`-Taste, deutsche Umlaute (`ä`, `ö`, `ü`, `ß` unter `?123`), Smart-Auto-Open und Handheld-Tooltip-Fix.
 
 ---
 
+## 🛠️ Entwicklung & Build
+```bash
+JAVA_HOME=/home/lukhicken/.jdks/jdk-25+36 ./gradlew build --offline
+JAVA_HOME=/home/lukhicken/.jdks/jdk-25+36 ./gradlew installToPrism -PprismInstance=26.3
+```
+
 ## ⚙️ Konfiguration
-Gespeichert unter `.minecraft/config/steamdeck_essentials.json`.
-Werte können im Spiel oder via JSON editiert werden.
+* Globale Config: `.minecraft/config/steamdeck_essentials.json`
+* Per-Controller-Profile: `.minecraft/config/steamdeck_essentials/profiles/*.json`
