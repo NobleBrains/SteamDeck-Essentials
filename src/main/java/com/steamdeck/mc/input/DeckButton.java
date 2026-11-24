@@ -42,11 +42,25 @@ public enum DeckButton {
     LPAD_GRID_6("Raster 6 (rechts)"),
     LPAD_GRID_7("Raster 7 (unten links)"),
     LPAD_GRID_8("Raster 8 (unten)"),
-    LPAD_GRID_9("Raster 9 (unten rechts)");
+    LPAD_GRID_9("Raster 9 (unten rechts)"),
+    // Virtual buttons: custom 8-slice radial menu page ("⭐ Eigene Shortcuts") clockwise from 12 o'clock
+    RADIAL_1("Radial 1 (Oben)"),
+    RADIAL_2("Radial 2 (Oben Rechts)"),
+    RADIAL_3("Radial 3 (Rechts)"),
+    RADIAL_4("Radial 4 (Unten Rechts)"),
+    RADIAL_5("Radial 5 (Unten)"),
+    RADIAL_6("Radial 6 (Unten Links)"),
+    RADIAL_7("Radial 7 (Links)"),
+    RADIAL_8("Radial 8 (Oben Links)");
 
     private static final DeckButton[] GRID = {
             LPAD_GRID_1, LPAD_GRID_2, LPAD_GRID_3, LPAD_GRID_4, LPAD_GRID_5,
             LPAD_GRID_6, LPAD_GRID_7, LPAD_GRID_8, LPAD_GRID_9
+    };
+
+    private static final DeckButton[] RADIAL = {
+            RADIAL_1, RADIAL_2, RADIAL_3, RADIAL_4,
+            RADIAL_5, RADIAL_6, RADIAL_7, RADIAL_8
     };
 
     /** Grid cell 0..8 (row-major from the top left). */
@@ -56,7 +70,19 @@ public enum DeckButton {
 
     /** 0..8 for a grid cell, -1 for every other button. */
     public int gridIndex() {
-        return ordinal() >= LPAD_GRID_1.ordinal() ? ordinal() - LPAD_GRID_1.ordinal() : -1;
+        return (ordinal() >= LPAD_GRID_1.ordinal() && ordinal() <= LPAD_GRID_9.ordinal())
+                ? ordinal() - LPAD_GRID_1.ordinal() : -1;
+    }
+
+    /** Custom radial menu slice 0..7 (clockwise from top). */
+    public static DeckButton radialSlot(int index) {
+        return RADIAL[index];
+    }
+
+    /** 0..7 for a custom radial slice, -1 for every other button. */
+    public int radialIndex() {
+        return (ordinal() >= RADIAL_1.ordinal() && ordinal() <= RADIAL_8.ordinal())
+                ? ordinal() - RADIAL_1.ordinal() : -1;
     }
 
     private final String displayName;

@@ -84,6 +84,10 @@ public class SteamDeckInputManager {
     private volatile float rightTriggerValue = 0.0f;
     private int lastBowPullStage = -1;
     private int lastLowDurabilityItemSlot = -1;
+    private int lastPlayerHurtTime = 0;
+    private boolean wasPlayerSwinging = false;
+    private net.minecraft.core.BlockPos lastDestroyingBlockPos = null;
+    private float padScrollAccum = 0.0f;
     private long lastDeviceCheckTime = 0;
     private ActionSet currentActionSet = ActionSet.IN_GAME;
 
@@ -571,6 +575,11 @@ public class SteamDeckInputManager {
         if (activeKind.hasDualTouchpads()) {
             hardLeft = rawTouchpadClick;
             hardRight = SDLGamepad.SDL_GetGamepadButton(activeGamepadHandle, SDLGamepad.SDL_GAMEPAD_BUTTON_MISC2);
+        } else if (!hasScreen && "SPLIT_BUTTONS".equals(cfg.centerTrackpadMode)) {
+            // Single center touchpad split into Left Half (Trackpad L) and Right Half (Trackpad R)
+            boolean leftHalf = padX[1] < 0.5f;
+            hardLeft = rawTouchpadClick && leftHalf;
+            hardRight = rawTouchpadClick && !leftHalf;
         } else {
             // Single center touchpad (e.g. PS5 DualSense): map click to RIGHT_TRACKPAD (mouse left click in menus)
             hardLeft = false;
@@ -1027,6 +1036,14 @@ public class SteamDeckInputManager {
 
         ActionBinding binding = ModConfig.getInstance().getBinding(set, button);
         if (!hasScreen) menuShiftHeld = false;
+        // Safety fallback: never let the user lock themselves out of the Pause menu or out of closing a screen
+        if (set == ActionSet.IN_GAME && button == DeckButton.START
+                && !ModConfig.getInstance().hasActionInSet(ActionSet.IN_GAME, DeckAction.PAUSE)) {
+            binding = new ActionBinding(DeckAction.PAUSE);
+        } else if (set == ActionSet.MENUS && (button == DeckButton.B || button == DeckButton.START)
+                && !ModConfig.getInstance().hasActionInSet(ActionSet.MENUS, DeckAction.CLOSE_SCREEN)) {
+            binding = new ActionBinding(DeckAction.CLOSE_SCREEN);
+        }
         if (binding.getAction() == DeckAction.NONE) return;
 
         long now = System.currentTimeMillis();
@@ -1061,6 +1078,26 @@ public class SteamDeckInputManager {
         };
     }
 
+    private void handleMenuPageOrScroll(Minecraft client, int direction) {
+        if (client == null || client.gui == null) return;
+        Screen screen = client.gui.screen();
+        if (screen instanceof net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen creativeScreen) {
+            try {
+                java.util.List<net.minecraft.world.item.CreativeModeTab> tabs = net.minecraft.world.item.CreativeModeTabs.tabs();
+                if (!tabs.isEmpty()) {
+                    net.minecraft.world.item.CreativeModeTab cur = com.steamdeck.mc.mixin.CreativeModeInventoryScreenAccessor.getSelectedTab();
+                    int idx = tabs.indexOf(cur);
+                    int next = idx < 0 ? 0 : (idx + direction + tabs.size()) % tabs.size();
+                    ((com.steamdeck.mc.mixin.CreativeModeInventoryScreenAccessor) creativeScreen).invokeSelectTab(tabs.get(next));
+                    VirtualKeyboard.playClickSound();
+                    com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerHotbarHaptic(direction);
+                    return;
+                }
+            } catch (Throwable ignored) {}
+        }
+        scrollOnce(client, true, -direction);
+    }
+
     private void scrollOnce(Minecraft client, boolean hasScreen, int direction) {
         if (hasScreen) {
             Screen screen = client.gui.screen();
@@ -1075,20 +1112,37 @@ public class SteamDeckInputManager {
         }
     }
 
+    /** Fires a press + release of the binding assigned to {@code button} in {@link ActionSet#IN_GAME} (used by custom radial slices). */
+    public void triggerOneShotBinding(Minecraft client, DeckButton button) {
+        if (client == null || button == null) return;
+        ActionBinding b = ModConfig.getInstance().getBinding(ActionSet.IN_GAME, button);
+        if (b.getAction() == DeckAction.NONE) return;
+        boolean hasScreen = client.gui != null && client.gui.screen() != null;
+        executeBinding(b, true, false, client, hasScreen, false);
+        executeBinding(b, false, true, client, hasScreen, false);
+    }
+
     /** Performs a binding (custom key or semantic action). {@code repeat} marks synthetic hold-repeats. */
     private void executeBinding(ActionBinding binding, boolean isDown, boolean wasDown, Minecraft client,
                                 boolean hasScreen, boolean repeat) {
         if (binding.isCustomKey()) {
             int keyCode = binding.getCustomKeyCode();
+            int chord = binding.hasChordKey() ? binding.getChordKeyCode() : 0;
+            int mods = binding.getModifiersForChord();
             try {
-                // Exactly like a real keyboard: vanilla's KeyboardHandler decides what the key does (it sets
-                // and clicks key mappings only when no screen is open). Setting them here as well counted
-                // every press twice in-game and let keys act "through" open menus.
+                // Exactly like a real keyboard: vanilla's KeyboardHandler (and MaLiLib/Litematica) decides what the key does.
+                // When a chord/modifier prefix key is configured (e.g. Ctrl+M or Litematica M+C), press prefix first and release it last.
                 if (client.keyboardHandler != null && client.getWindow() != null && isDown != wasDown) {
                     if (repeat && !isDown) {
                         // a synthetic repeat sends one "repeat" key event (action 2) instead of release+press
+                    } else if (repeat) {
+                        dispatchKey(client, 2, new KeyEvent(keyCode, keyCode, mods));
+                    } else if (isDown) {
+                        if (chord > 0) dispatchKey(client, 1, new KeyEvent(chord, chord, mods));
+                        dispatchKey(client, 1, new KeyEvent(keyCode, keyCode, mods));
                     } else {
-                        dispatchKey(client, repeat ? 2 : (isDown ? 1 : 0), new KeyEvent(keyCode, keyCode, 0));
+                        dispatchKey(client, 0, new KeyEvent(keyCode, keyCode, 0));
+                        if (chord > 0) dispatchKey(client, 0, new KeyEvent(chord, chord, 0));
                     }
                 }
             } catch (Throwable t) {
@@ -1176,12 +1230,20 @@ public class SteamDeckInputManager {
                     client.player.getInventory().setSelectedSlot(action.hotbarSlot());
                 }
             }
-            // There is no "next slot" key in vanilla menus (the mouse wheel scrolls the screen instead)
+            // In creative inventory, L1/R1 (HOTBAR_PREV/NEXT) cycle creative tabs; in other screens, scroll the list
             case HOTBAR_PREV -> {
-                if (!hasScreen || !isDown) handleHotbarAction(client, -1, isDown && !hasScreen, wasDown);
+                if (hasScreen) {
+                    if (isDown && !wasDown) handleMenuPageOrScroll(client, -1);
+                } else {
+                    handleHotbarAction(client, -1, isDown, wasDown);
+                }
             }
             case HOTBAR_NEXT -> {
-                if (!hasScreen || !isDown) handleHotbarAction(client, 1, isDown && !hasScreen, wasDown);
+                if (hasScreen) {
+                    if (isDown && !wasDown) handleMenuPageOrScroll(client, 1);
+                } else {
+                    handleHotbarAction(client, 1, isDown, wasDown);
+                }
             }
             case PAUSE -> {
                 if (isDown && !wasDown) {
@@ -1632,8 +1694,24 @@ public class SteamDeckInputManager {
             }
         }
 
-        // 2. Native right trackpad
-        if (isNativeTrackpadActive(config)) {
+        // 2. Native right / center trackpad
+        if (!activeKind.hasDualTouchpads() && activeKind.hasNativeTouchpad() && "SCROLL_WHEEL".equals(config.centerTrackpadMode)) {
+            float[] d = readRightTrackpadDelta(cameraPad);
+            if (d != null) {
+                markControllerActivity();
+                padScrollAccum += (d[0] - d[1]) * 6.0f;
+                while (padScrollAccum >= 1.0f) {
+                    padScrollAccum -= 1.0f;
+                    stepHotbar(client, 1);
+                }
+                while (padScrollAccum <= -1.0f) {
+                    padScrollAccum += 1.0f;
+                    stepHotbar(client, -1);
+                }
+            } else if (!isTrackpadTouched(1)) {
+                padScrollAccum = 0.0f;
+            }
+        } else if (isNativeTrackpadActive(config)) {
             float[] d = readRightTrackpadDelta(cameraPad);
             float scale = TRACKPAD_DEGREES_PER_PAD_WIDTH * config.trackpadSensitivity;
             if (d != null) {
@@ -2358,6 +2436,37 @@ public class SteamDeckInputManager {
                 lastLowDurabilityItemSlot = -1;
             }
         }
+
+        // 3. Damage / Fall damage impact rumble
+        ModConfig cfg = ModConfig.getInstance();
+        int hurtTime = player.hurtTime;
+        if (cfg.hapticOnDamage && hurtTime > lastPlayerHurtTime && hurtTime >= 8) {
+            com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerHaptic(true, true, (short) 54000, 95);
+        }
+        lastPlayerHurtTime = hurtTime;
+
+        // 4. Block break tactile pop
+        if (cfg.hapticOnBlockBreak && client.gameMode != null && client.level != null) {
+            if (client.gameMode.isDestroying() && client.hitResult instanceof net.minecraft.world.phys.BlockHitResult bhr
+                    && bhr.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                lastDestroyingBlockPos = bhr.getBlockPos();
+            } else if (lastDestroyingBlockPos != null) {
+                if (client.level.getBlockState(lastDestroyingBlockPos).isAir()) {
+                    com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerHaptic(false, true, (short) 36000, 30);
+                }
+                lastDestroyingBlockPos = null;
+            }
+        } else {
+            lastDestroyingBlockPos = null;
+        }
+
+        // 5. Melee attack hit pulse
+        boolean swinging = player.isSwinging();
+        if (cfg.hapticOnAttackHit && swinging && !wasPlayerSwinging
+                && client.hitResult instanceof net.minecraft.world.phys.EntityHitResult) {
+            com.steamdeck.mc.power.HapticFeedbackManager.getInstance().triggerHaptic(false, true, (short) 40000, 35);
+        }
+        wasPlayerSwinging = swinging;
     }
 
     /**

@@ -14,12 +14,17 @@ public enum ControllerKind {
     STEAM_CONTROLLER_2015("Steam Controller (2015)", true, true, 2),
     PS5_DUALSENSE("PS5 DualSense", false, true, 1),
     PS5_DUALSENSE_EDGE("PS5 DualSense Edge", false, true, 1),
+    PS4_DUALSHOCK("PS4 DualShock 4", false, true, 1),
+    XBOX("Xbox Controller", false, true, 0),
+    SWITCH_PRO("Switch Pro Controller", false, true, 0),
     STEAM_VIRTUAL("Steam Input (virtuell)", false, false, 0),
     OTHER("Gamepad", false, false, 0),
     NONE("Kein Controller", false, false, 0);
 
     public static final int VALVE_VENDOR_ID = 0x28DE;
     public static final int SONY_VENDOR_ID = 0x054C;
+    public static final int MICROSOFT_VENDOR_ID = 0x045E;
+    public static final int NINTENDO_VENDOR_ID = 0x057E;
 
     private final String label;
     private final boolean nativeValve;
@@ -52,6 +57,11 @@ public enum ControllerKind {
         return this == PS5_DUALSENSE || this == PS5_DUALSENSE_EDGE;
     }
 
+    /** True if this is a Sony PlayStation controller (PS5 DualSense / Edge or PS4 DualShock 4). */
+    public boolean isPlayStation() {
+        return isDualSense() || this == PS4_DUALSHOCK;
+    }
+
     /** True if the controller has at least one SDL-readable capacitive touchpad. */
     public boolean hasNativeTouchpad() {
         return nativeDirect && physicalTrackpads > 0;
@@ -75,7 +85,7 @@ public enum ControllerKind {
     public int priority() {
         return switch (this) {
             case STEAM_DECK, STEAM_CONTROLLER_2026 -> 0;
-            case PS5_DUALSENSE, PS5_DUALSENSE_EDGE, STEAM_CONTROLLER_2015 -> 1;
+            case PS5_DUALSENSE, PS5_DUALSENSE_EDGE, PS4_DUALSHOCK, XBOX, SWITCH_PRO, STEAM_CONTROLLER_2015 -> 1;
             case STEAM_VIRTUAL -> 2;
             case OTHER -> 3;
             case NONE -> 9;
@@ -87,8 +97,20 @@ public enum ControllerKind {
             return switch (product) {
                 case 0x0CE6 -> PS5_DUALSENSE;
                 case 0x0DF2 -> PS5_DUALSENSE_EDGE;
+                case 0x05C4, 0x09CC, 0x0BA0 -> PS4_DUALSHOCK;
                 default -> OTHER;
             };
+        }
+        if (vendor == MICROSOFT_VENDOR_ID) {
+            return switch (product) {
+                case 0x028E, 0x028F, 0x02D1, 0x02DD, 0x02E0, 0x02E3, 0x02EA, 0x02FD,
+                     0x0B00, 0x0B05, 0x0B12, 0x0B13, 0x0B20, 0x0B22 -> XBOX;
+                default -> OTHER;
+            };
+        }
+        if (vendor == NINTENDO_VENDOR_ID) {
+            if (product == 0x2009) return SWITCH_PRO;
+            return OTHER;
         }
         if (vendor != VALVE_VENDOR_ID) {
             return OTHER;

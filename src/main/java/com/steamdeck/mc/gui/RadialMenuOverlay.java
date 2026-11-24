@@ -26,12 +26,14 @@ public class RadialMenuOverlay {
     public static final int PAGE_HOTBAR = 0;
     public static final int PAGE_F_KEYS = 1;
     public static final int PAGE_F3_COMBOS = 2;
-    private static final int PAGE_COUNT = 3;
+    public static final int PAGE_CUSTOM = 3;
+    private static final int PAGE_COUNT = 4;
 
     private static final String[] PAGE_TITLES = {
             "🎒 Hotbar 1–9",
             "🖥️ F-Tasten (F1–F8)",
-            "🔧 F3+ Utilities"
+            "🔧 F3+ Utilities",
+            "⭐ Eigene Shortcuts"
     };
 
     private static final String[][] F_KEYS_LABELS = {
@@ -218,6 +220,11 @@ public class RadialMenuOverlay {
                 case 6 -> triggerDebugKey(client, client.options.keyDebugCopyLocation); // F3+C
                 case 7 -> triggerDebugKey(client, client.options.keyDebugReloadResourcePacks); // F3+T
             }
+        } else if (page == PAGE_CUSTOM) {
+            if (slice >= 0 && slice < 8) {
+                com.steamdeck.mc.input.SteamDeckInputManager.getInstance()
+                        .triggerOneShotBinding(client, com.steamdeck.mc.input.DeckButton.radialSlot(slice));
+            }
         }
     }
 
@@ -252,7 +259,7 @@ public class RadialMenuOverlay {
             // Render brief toast when switching pages with R3 while wheel is closed
             long elapsed = System.currentTimeMillis() - lastPageSwitchToastTime;
             if (elapsed < 1800L) {
-                String toast = String.format("🎡 Radial [%d/3]: %s", currentPage + 1, PAGE_TITLES[currentPage]);
+                String toast = String.format("🎡 Radial [%d/%d]: %s", currentPage + 1, PAGE_COUNT, PAGE_TITLES[currentPage]);
                 int tw = font.width(toast) + 16;
                 int tx = (screenWidth - tw) / 2;
                 int ty = screenHeight - 54;
@@ -282,6 +289,12 @@ public class RadialMenuOverlay {
 
             if (currentPage == PAGE_HOTBAR) {
                 renderHotbarSlice(graphics, font, client, i, sx, sy, hovered);
+            } else if (currentPage == PAGE_CUSTOM) {
+                var b = ModConfig.getInstance().getBinding(com.steamdeck.mc.input.ActionSet.IN_GAME,
+                        com.steamdeck.mc.input.DeckButton.radialSlot(i));
+                String shortLbl = b.getAction() == com.steamdeck.mc.input.DeckAction.NONE ? "--"
+                        : font.plainSubstrByWidth(b.getDisplayLabel(), 48);
+                renderActionSlice(graphics, font, "S" + (i + 1), shortLbl, sx, sy, hovered);
             } else {
                 String[] info = (currentPage == PAGE_F_KEYS) ? F_KEYS_LABELS[i] : F3_COMBO_LABELS[i];
                 renderActionSlice(graphics, font, info[0], info[1], sx, sy, hovered);
@@ -298,7 +311,7 @@ public class RadialMenuOverlay {
         graphics.outline(hubX, hubY, hubW, hubH, 0xFF00E5FF);
 
         // Page title & indicator
-        String pageHeader = String.format("[%d/3] %s", currentPage + 1, PAGE_TITLES[currentPage]);
+        String pageHeader = String.format("[%d/%d] %s", currentPage + 1, PAGE_COUNT, PAGE_TITLES[currentPage]);
         graphics.centeredText(font, pageHeader, cx, hubY + 5, 0xFF00E5FF);
 
         // Hovered slice full description
@@ -366,6 +379,10 @@ public class RadialMenuOverlay {
             return "Slot " + (hoveredSlice + 1) + ": " + stack.getHoverName().getString();
         } else if (currentPage == PAGE_F_KEYS) {
             return F_KEYS_LABELS[hoveredSlice][2];
+        } else if (currentPage == PAGE_CUSTOM) {
+            var b = ModConfig.getInstance().getBinding(com.steamdeck.mc.input.ActionSet.IN_GAME,
+                    com.steamdeck.mc.input.DeckButton.radialSlot(hoveredSlice));
+            return b.getAction() == com.steamdeck.mc.input.DeckAction.NONE ? "Freier Slot (im Konfigurator belegbar)" : b.getDisplayLabel();
         } else {
             return F3_COMBO_LABELS[hoveredSlice][2];
         }

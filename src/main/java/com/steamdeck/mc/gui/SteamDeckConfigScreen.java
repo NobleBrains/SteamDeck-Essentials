@@ -211,7 +211,7 @@ public class SteamDeckConfigScreen extends Screen {
     /** Applies a click (delta = 0) or -/+ (delta = -1/+1) on a trackpad-tab row. */
     private boolean adjustTrackpadSetting(int row, int delta) {
         ModConfig c = ModConfig.getInstance();
-        if (SteamDeckInputManager.getInstance().getActiveKind().isDualSense()) {
+        if (SteamDeckInputManager.getInstance().getActiveKind().isPlayStation()) {
             return adjustDualSenseTrackpadSetting(c, row, delta);
         }
         switch (row) {
@@ -310,7 +310,7 @@ public class SteamDeckConfigScreen extends Screen {
         int rowW = 340;
         int y = 46;
 
-        if (input.getActiveKind().isDualSense()) {
+        if (input.getActiveKind().isPlayStation()) {
             String padModeLabel = switch (c.centerTrackpadMode) {
                 case "CAMERA" -> "Kamera";
                 case "BUTTON" -> "Nur Taste";
@@ -400,7 +400,9 @@ public class SteamDeckConfigScreen extends Screen {
         if (!input.getActiveKind().isNativeValve()) {
             info = "Nur für native Valve-Controller (ohne Steam Input).";
         } else if (!com.steamdeck.mc.power.TritonTrackpadHaptics.getInstance().isAvailable()) {
-            info = "Pad-Haptik: Rumble-Fallback (kein Steam Controller 2026)";
+            info = input.getActiveKind() == com.steamdeck.mc.input.ControllerKind.STEAM_CONTROLLER_2026
+                    ? "Kein /dev/hidraw-Zugriff (Flatpak: --device=all & udev steam-devices) → Rumble"
+                    : "Pad-Haptik: Rumble-Fallback (kein Steam Controller 2026)";
         } else {
             info = "Finger aufs Pad legen und drücken: der Balken zeigt den Druck live.";
         }

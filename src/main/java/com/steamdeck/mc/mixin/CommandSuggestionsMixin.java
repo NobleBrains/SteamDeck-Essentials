@@ -19,7 +19,8 @@ public abstract class CommandSuggestionsMixin {
 
     @ModifyConstant(
             method = "showSuggestions",
-            constant = @Constant(intValue = 72)
+            constant = @Constant(intValue = 72),
+            require = 0
     )
     private int modifySuggestionsTopY(int original) {
         if (!com.steamdeck.mc.gui.ChatLayout.isTop()) return original;
@@ -28,7 +29,8 @@ public abstract class CommandSuggestionsMixin {
 
     @ModifyConstant(
             method = "extractUsage",
-            constant = @Constant(intValue = 72)
+            constant = @Constant(intValue = 72),
+            require = 0
     )
     private int modifyUsageTopY(int original) {
         if (!com.steamdeck.mc.gui.ChatLayout.isTop()) return original;

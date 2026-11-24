@@ -59,7 +59,8 @@ public abstract class ChatComponentMixin {
      */
     @Inject(
             method = "extractRenderState(Lnet/minecraft/client/gui/components/ChatComponent$ChatGraphicsAccess;IILnet/minecraft/client/gui/components/ChatComponent$DisplayMode;)V",
-            at = @At("HEAD")
+            at = @At("HEAD"),
+            require = 0
     )
     private void steamdeck$syncLayout(CallbackInfo ci) {
         int v = com.steamdeck.mc.gui.ChatLayout.version();
@@ -72,7 +73,8 @@ public abstract class ChatComponentMixin {
     @Inject(
             method = "addMessageToDisplayQueue",
             at = @At("HEAD"),
-            cancellable = true
+            cancellable = true,
+            require = 0
     )
     private void onAddMessageToDisplayQueue(GuiMessage message, CallbackInfo ci) {
         if (!com.steamdeck.mc.gui.ChatLayout.isTop()) return; // vanilla layout (chat at the bottom)

@@ -31,9 +31,10 @@ Bevor ein neues Feature eingebaut wird, muss es zu diesen sechs Grundsätzen pas
    * Kamera, Gyro, Trackpad-Maus und OSK-Navigation laufen **pro Render-Frame** (`HudMixin` → `pollCameraFrame` / `GyroManager.update`, `ScreenEvents.afterExtract` → `pollFrame`), nicht nur im 20-Hz-Client-Tick (`ClientTickEvents.END_CLIENT_TICK`).
    * USB/Bluetooth-HID-Schreibzugriffe (`TritonTrackpadHaptics`, `LizardMode`) laufen auf Daemon-Threads, damit Bluetooth-Latenz nie einen Frame blockiert.
 
-6. **Übersichtliche UI-Grenzen (kein Settings-Overload):**
-   * Standard-Flows sollen ohne Konfigurationszwang intuitiv funktionieren (z. B. feste SteamOS-OSK-Hotkeys `A/X/Y/Start/B`, automatische Hardware- & Controller-Erkennung).
-   * Neue Features (wie DualSense Adaptive Triggers) sind pro Feature togglebar, aber sinnvoll vorbelegt.
+6. **„Simple by default, deep when you open it“ & Unsichtbar bei Maus/Tastatur:**
+   * **Plug & Play ab Werk:** Einstecken und losspielen, ohne etwas konfigurieren zu müssen – sinnvolle Defaults pro Controller-Typ.
+   * **Maximale Anpassbarkeit ohne künstliche Grenzen:** Wer tief einsteigen will, soll Radial-Menüs, Trackpad-Modi, Mod-Hotkeys, Activators und Event-Rumble frei kombinieren können – sauber gestaffelt, damit die Basis-UI schlank bleibt.
+   * **Null Reibung ohne Controller:** Sobald mit Maus & Tastatur gespielt wird, darf die Mod nichts tun, was das normale Spielen irgendwie nerviger macht (keine Overlays, kein geändertes Chat-Layout, kein OSK, keine abgefangenen Tasten). Siehe [docs/ROADMAP.md](docs/ROADMAP.md) für die vollständige Produkt-Roadmap.
 
 ---
 

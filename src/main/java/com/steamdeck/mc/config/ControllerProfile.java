@@ -83,16 +83,16 @@ public class ControllerProfile {
 
     public static String parityGroupFor(ControllerKind kind) {
         if (kind == null) return "DUAL_PAD";
-        if (kind.isDualSense()) return "SINGLE_PAD";
-        if (kind == ControllerKind.OTHER) return "STANDARD";
+        if (kind.isPlayStation()) return "SINGLE_PAD";
+        if (kind == ControllerKind.OTHER || kind == ControllerKind.XBOX || kind == ControllerKind.SWITCH_PRO) return "STANDARD";
         return "DUAL_PAD"; // STEAM_DECK, STEAM_CONTROLLER_2026, STEAM_CONTROLLER_2015, STEAM_VIRTUAL
     }
 
     public static String parityLabel(String group) {
         return switch (group) {
             case "DUAL_PAD" -> "Steam Deck / Steam Controller";
-            case "SINGLE_PAD" -> "PS5 DualSense";
-            default -> "Standard-Gamepad";
+            case "SINGLE_PAD" -> "PlayStation (DualSense / DS4)";
+            default -> "Standard-Gamepad (Xbox / Switch)";
         };
     }
 

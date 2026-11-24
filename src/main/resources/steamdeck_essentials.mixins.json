@@ -15,6 +15,7 @@
     "KeyboardHandlerAccessor",
     "GameModeSwitcherScreenAccessor",
     "AbstractContainerScreenAccessor",
+    "CreativeModeInventoryScreenAccessor",
     "HudMixin",
     "KeyboardHandlerMixin"
   ],

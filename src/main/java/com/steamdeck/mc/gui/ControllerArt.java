@@ -402,6 +402,11 @@ public final class ControllerArt {
     public static void glyph(GuiGraphicsExtractor g, Font font, DeckButton b, int x, int y, boolean playstation) {
         int fg = 0xFFFFFFFF;
         int ink = 0xFF0E141B;
+        if (b.radialIndex() >= 0) {
+            ring(g, x + 5, y + 5, 6, 1, fg, ink);
+            centered(g, font, "R" + (b.radialIndex() + 1), x + 5, y + 2, fg);
+            return;
+        }
         if (b.gridIndex() >= 0) {
             // Mini 3x3 grid with the field filled
             int cell = b.gridIndex();

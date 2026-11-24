@@ -22,11 +22,30 @@ public abstract class PauseScreenMixin extends Screen {
 
     @Inject(method = "init", at = @At("TAIL"))
     private void addDeckConfigButton(CallbackInfo ci) {
+        int bx = this.width - 105;
+        int by = 6;
+        int bw = 95;
+        int bh = 20;
+        // Shift down if another mod (e.g. ModMenu, ReplayMod, Essential) already placed a button in the top-right corner
+        for (int attempt = 0; attempt < 5; attempt++) {
+            boolean overlap = false;
+            for (var child : this.children()) {
+                if (child instanceof net.minecraft.client.gui.components.AbstractWidget w && w.visible) {
+                    if (w.getX() < bx + bw && w.getX() + w.getWidth() > bx
+                            && w.getY() < by + bh && w.getY() + w.getHeight() > by) {
+                        overlap = true;
+                        break;
+                    }
+                }
+            }
+            if (!overlap) break;
+            by += 24;
+        }
         this.addRenderableWidget(
                 net.minecraft.client.gui.components.Button.builder(
                         Component.literal("🎮 Controller"),
                         btn -> net.minecraft.client.Minecraft.getInstance().gui.setScreen(new com.steamdeck.mc.gui.ControllerLayoutScreen(this))
-                ).bounds(this.width - 105, 6, 95, 20).build()
+                ).bounds(bx, by, bw, bh).build()
         );
     }
 

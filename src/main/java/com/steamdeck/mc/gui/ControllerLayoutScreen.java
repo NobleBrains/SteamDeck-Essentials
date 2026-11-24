@@ -53,7 +53,7 @@ public class ControllerLayoutScreen extends Screen {
     private static final int ART_Y = 24;
 
     /** Global (not per action set) modes shown as rows like Steam's "mode" lines. */
-    private enum Mode { LEFT_STICK, RIGHT_STICK, GYRO, LEFT_PAD, LEFT_PAD_GRID, GRID_TOUCH_CANCEL, RIGHT_PAD, PAD_SMOOTH, PAD_DEBUG, STEAM_CHORD }
+    private enum Mode { LEFT_STICK, RIGHT_STICK, RADIAL_EDIT, GYRO, LEFT_PAD, LEFT_PAD_GRID, GRID_TOUCH_CANCEL, RIGHT_PAD, PAD_SMOOTH, PAD_DEBUG, STEAM_CHORD }
 
     /** side: 0 = left column (right aligned), 1 = right column, 2 = bottom section */
     private record Item(DeckButton button, Mode mode, int x, int y, int w, int h, int side) {
@@ -110,11 +110,15 @@ public class ControllerLayoutScreen extends Screen {
             column(1, 30, null, DeckButton.RT, DeckButton.RB);
             if (edge) column(1, 60, null, DeckButton.R4);
             column(1, 90, null, DeckButton.START, DeckButton.QAM);
-            column(1, 120, "Zentral-Touchpad", DeckButton.RIGHT_TRACKPAD, Mode.RIGHT_PAD, Mode.PAD_SMOOTH, Mode.PAD_DEBUG);
+            if ("SPLIT_BUTTONS".equals(ModConfig.getInstance().centerTrackpadMode)) {
+                column(1, 120, "Zentral-Touchpad", DeckButton.LEFT_TRACKPAD, DeckButton.RIGHT_TRACKPAD, Mode.RIGHT_PAD, Mode.PAD_SMOOTH, Mode.PAD_DEBUG);
+            } else {
+                column(1, 120, "Zentral-Touchpad", DeckButton.RIGHT_TRACKPAD, Mode.RIGHT_PAD, Mode.PAD_SMOOTH, Mode.PAD_DEBUG);
+            }
             bottom(0, "Linker Stick", Mode.LEFT_STICK, DeckButton.L3);
             bottom(1, "Steuerkreuz", DeckButton.DPAD_UP, DeckButton.DPAD_DOWN, DeckButton.DPAD_LEFT, DeckButton.DPAD_RIGHT);
             bottom(2, "Gyro", Mode.GYRO);
-            bottom(3, "Rechter Stick", Mode.RIGHT_STICK, DeckButton.R3);
+            bottom(3, "Rechter Stick", Mode.RIGHT_STICK, Mode.RADIAL_EDIT, DeckButton.R3);
             bottom(4, "Tasten", DeckButton.A, DeckButton.B, DeckButton.X, DeckButton.Y);
             return;
         }
@@ -132,7 +136,7 @@ public class ControllerLayoutScreen extends Screen {
         bottom(0, "Linker Stick", Mode.LEFT_STICK, DeckButton.L3, DeckButton.LEFT_STICK_TOUCH);
         bottom(1, "Steuerkreuz", DeckButton.DPAD_UP, DeckButton.DPAD_DOWN, DeckButton.DPAD_LEFT, DeckButton.DPAD_RIGHT);
         bottom(2, "Gyro", Mode.GYRO);
-        bottom(3, "Rechter Stick", Mode.RIGHT_STICK, DeckButton.R3, DeckButton.RIGHT_STICK_TOUCH);
+        bottom(3, "Rechter Stick", Mode.RIGHT_STICK, Mode.RADIAL_EDIT, DeckButton.R3, DeckButton.RIGHT_STICK_TOUCH);
         bottom(4, "Tasten", DeckButton.A, DeckButton.B, DeckButton.X, DeckButton.Y);
     }
 
@@ -170,7 +174,7 @@ public class ControllerLayoutScreen extends Screen {
 
     private ControllerArt.Variant autoVariant() {
         ControllerKind kind = SteamDeckInputManager.getInstance().getActiveKind();
-        if (kind.isDualSense()) return ControllerArt.Variant.PS5;
+        if (kind.isPlayStation()) return ControllerArt.Variant.PS5;
         if (kind == ControllerKind.STEAM_DECK) return ControllerArt.Variant.HANDHELD;
         if (kind == ControllerKind.STEAM_VIRTUAL && PlatformDetector.getHardware().steamDeck()) return ControllerArt.Variant.HANDHELD;
         if (kind == ControllerKind.NONE && PlatformDetector.getHardware().steamDeck()) return ControllerArt.Variant.HANDHELD;
@@ -186,6 +190,7 @@ public class ControllerLayoutScreen extends Screen {
         return switch (mode) {
             case LEFT_STICK -> "Bewegen";
             case RIGHT_STICK -> c.enableRightStickRadialMenu ? "Radial-Menü (R3 blättert)" : "Kamera";
+            case RADIAL_EDIT -> "Radial-Shortcuts belegen …";
             case GYRO -> c.enableGyroAiming ? "Kamera: " + GyroManager.activationLabel(c.gyroActivation) : "Aus";
             case LEFT_PAD -> switch (c.leftTrackpadMode) {
                 case "DPAD_MOVE" -> "Steuerkreuz (Bewegen)";
@@ -196,7 +201,9 @@ public class ControllerLayoutScreen extends Screen {
             case RIGHT_PAD -> variant == ControllerArt.Variant.PS5
                     ? switch (c.centerTrackpadMode) {
                         case "CAMERA" -> "Spiel: Kamera";
-                        case "BUTTON" -> "Spiel: Nur Taste";
+                        case "BUTTON" -> "Spiel: 1 Taste";
+                        case "SPLIT_BUTTONS" -> "Spiel: 2 Zonen (L/R)";
+                        case "SCROLL_WHEEL" -> "Spiel: Scrollrad";
                         default -> "Spiel: Aus";
                     }
                     : (c.nativeTrackpadCamera ? "Kamera / Mauszeiger" : "Aus (Steam Input)");
@@ -211,6 +218,7 @@ public class ControllerLayoutScreen extends Screen {
         return switch (mode) {
             case LEFT_STICK -> "Der linke Stick bewegt die Figur (fest).";
             case RIGHT_STICK -> "A: zwischen Kamera und Radial-Menü wechseln";
+            case RADIAL_EDIT -> "A: die 8 Felder der 4. Radial-Menü-Ebene (⭐ Eigene Shortcuts) frei belegen";
             case GYRO -> "A: Aus / Nur beim Zielen / Immer / Trackpad berührt / R-Stick berührt";
             case LEFT_PAD -> "A: Taste / Steuerkreuz (gedrückt = laufen) / Raster 3×3 (9 Felder, Klick löst aus)";
             case LEFT_PAD_GRID -> "A: die 9 Felder des linken Trackpads belegen (schaltet den Raster-Modus ein)";
@@ -359,7 +367,7 @@ public class ControllerLayoutScreen extends Screen {
         if (m == null) return null;
         return switch (m) {
             case LEFT_STICK -> DeckButton.LEFT_STICK_TOUCH;
-            case RIGHT_STICK -> DeckButton.RIGHT_STICK_TOUCH;
+            case RIGHT_STICK, RADIAL_EDIT -> DeckButton.RIGHT_STICK_TOUCH;
             case LEFT_PAD, LEFT_PAD_GRID -> DeckButton.LEFT_TRACKPAD;
             case RIGHT_PAD, PAD_SMOOTH, PAD_DEBUG -> DeckButton.RIGHT_TRACKPAD;
             case STEAM_CHORD -> DeckButton.STEAM;
@@ -481,7 +489,18 @@ public class ControllerLayoutScreen extends Screen {
                 c.save();
                 showToast("Linkes Trackpad: Raster 3×3 eingeschaltet");
             }
-            grid.open = true;
+            grid.open(false);
+            VirtualKeyboard.playClickSound();
+            return;
+        }
+        if (focus.mode() == Mode.RADIAL_EDIT) {
+            ModConfig c = ModConfig.getInstance();
+            if (!c.enableRightStickRadialMenu) {
+                c.enableRightStickRadialMenu = true;
+                c.save();
+                showToast("Rechter Stick: Radial-Menü eingeschaltet");
+            }
+            grid.open(true);
             VirtualKeyboard.playClickSound();
             return;
         }
@@ -504,14 +523,17 @@ public class ControllerLayoutScreen extends Screen {
                 case "DPAD_MOVE" -> "GRID_3X3";
                 default -> "BUTTON";
             };
-            case LEFT_PAD_GRID -> { return; }
+            case LEFT_PAD_GRID, RADIAL_EDIT -> { return; }
             case RIGHT_PAD -> {
                 if (variant == ControllerArt.Variant.PS5) {
                     c.centerTrackpadMode = switch (c.centerTrackpadMode) {
                         case "CAMERA" -> "BUTTON";
-                        case "BUTTON" -> "OFF";
+                        case "BUTTON" -> "SPLIT_BUTTONS";
+                        case "SPLIT_BUTTONS" -> "SCROLL_WHEEL";
+                        case "SCROLL_WHEEL" -> "OFF";
                         default -> "CAMERA";
                     };
+                    buildLayout();
                 } else {
                     c.nativeTrackpadCamera = !c.nativeTrackpadCamera;
                 }
@@ -569,8 +591,12 @@ public class ControllerLayoutScreen extends Screen {
 
     private void back() {
         if (picker.open) {
-            if (picker.listening) picker.listening = false;
-            else picker.open = false;
+            if (picker.listening || picker.listeningChord) {
+                picker.listening = false;
+                picker.listeningChord = false;
+            } else {
+                picker.open = false;
+            }
             return;
         }
         if (grid.open) {
@@ -622,7 +648,7 @@ public class ControllerLayoutScreen extends Screen {
 
     /** True while the "press a keyboard key" prompt waits (the Steam Input bridge must not swallow keys then). */
     public boolean isListeningForKey() {
-        return picker.open && picker.listening;
+        return picker.open && (picker.listening || picker.listeningChord);
     }
 
     /** A physical controller button was pressed (edge) while this screen is open. */
@@ -674,9 +700,10 @@ public class ControllerLayoutScreen extends Screen {
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
         boolean esc = event.isEscape();
-        if (picker.open && picker.listening) {
+        if (picker.open && (picker.listening || picker.listeningChord)) {
             if (!esc) picker.assignKey(key);
             picker.listening = false;
+            picker.listeningChord = false;
             return true;
         }
         if (esc || key == InputConstants.KEY_BACKSPACE) {
@@ -808,14 +835,31 @@ public class ControllerLayoutScreen extends Screen {
         static final int CX0 = PX + (PW - 3 * CW - 2 * GAP) / 2;
         static final int CY0 = PY + 24;
 
+        // Map 3x3 cell index (0..8, excluding center 4) to clockwise radial index 0..7 (1=Top, 2=TR, 5=R, 8=BR, 7=B, 6=BL, 3=L, 0=TL)
+        private static final int[] CELL_TO_RADIAL = {7, 0, 1, 6, -1, 2, 5, 4, 3};
+
         boolean open = false;
+        boolean radialMode = false;
         int index = 4;
+
+        void open(boolean radial) {
+            this.radialMode = radial;
+            this.index = radial ? 1 : 4;
+            this.open = true;
+        }
+
+        DeckButton buttonForCell(int cell) {
+            if (!radialMode) return DeckButton.gridCell(cell);
+            int r = CELL_TO_RADIAL[cell];
+            return r >= 0 ? DeckButton.radialSlot(r) : null;
+        }
 
         int cellX(int i) { return CX0 + (i % 3) * (CW + GAP); }
         int cellY(int i) { return CY0 + (i / 3) * (CH + GAP); }
 
         int cellAt(double cx, double cy) {
             for (int i = 0; i < 9; i++) {
+                if (radialMode && i == 4) continue;
                 if (cx >= cellX(i) && cx < cellX(i) + CW && cy >= cellY(i) && cy < cellY(i) + CH) return i;
             }
             return -1;
@@ -824,7 +868,14 @@ public class ControllerLayoutScreen extends Screen {
         void move(int dx, int dy) {
             int col = Math.max(0, Math.min(2, index % 3 + dx));
             int row = Math.max(0, Math.min(2, index / 3 + dy));
-            index = row * 3 + col;
+            int next = row * 3 + col;
+            if (radialMode && next == 4) {
+                col = Math.max(0, Math.min(2, col + dx));
+                row = Math.max(0, Math.min(2, row + dy));
+                next = row * 3 + col;
+                if (next == 4) next = 1;
+            }
+            index = next;
         }
 
         void hover(double cx, double cy) {
@@ -833,8 +884,11 @@ public class ControllerLayoutScreen extends Screen {
         }
 
         void edit() {
-            picker.openFor(DeckButton.gridCell(index));
-            VirtualKeyboard.playClickSound();
+            DeckButton btn = buttonForCell(index);
+            if (btn != null) {
+                picker.openFor(btn);
+                VirtualKeyboard.playClickSound();
+            }
         }
 
         void click(double cx, double cy, boolean right) {
@@ -845,7 +899,9 @@ public class ControllerLayoutScreen extends Screen {
             int i = cellAt(cx, cy);
             if (i < 0) return;
             index = i;
-            if (right) clearBinding(DeckButton.gridCell(i));
+            DeckButton btn = buttonForCell(i);
+            if (btn == null) return;
+            if (right) clearBinding(btn);
             else edit();
         }
 
@@ -853,21 +909,32 @@ public class ControllerLayoutScreen extends Screen {
             g.fill(0, 0, W, H, 0x99000000);
             g.fill(PX, PY, PX + PW, PY + PH, 0xFF1A1F27);
             g.fill(PX, PY, PX + PW, PY + 1, ACCENT);
-            String title = "Linkes Trackpad – Raster 3×3  –  " + setName(set);
+            String title = radialMode
+                    ? "Radial-Menü (Ebene 4: ⭐ Eigene Shortcuts)"
+                    : ("Linkes Trackpad – Raster 3×3  –  " + setName(set));
             g.text(font, font.plainSubstrByWidth(title, PW - 16), PX + 8, PY + 8, 0xFFFFFFFF, false);
 
             SteamDeckInputManager input = SteamDeckInputManager.getInstance();
-            int fingerCell = input.isGridModeActive() ? input.getGridHoverCell() : -1;
+            int fingerCell = (!radialMode && input.isGridModeActive()) ? input.getGridHoverCell() : -1;
             ModConfig cfg = ModConfig.getInstance();
+            ActionSet targetSet = radialMode ? ActionSet.IN_GAME : set;
             for (int i = 0; i < 9; i++) {
                 int x = cellX(i);
                 int y = cellY(i);
+                if (radialMode && i == 4) {
+                    g.fill(x, y, x + CW, y + CH, 0xFF141A22);
+                    g.outline(x, y, CW, CH, 0x4400E5FF);
+                    g.centeredText(font, "⭐ Radial", x + CW / 2, y + 18, ACCENT);
+                    g.centeredText(font, "8 Slots", x + CW / 2, y + 30, DIM);
+                    continue;
+                }
+                DeckButton btn = buttonForCell(i);
                 boolean focused = i == index && !picker.open;
                 g.fill(x, y, x + CW, y + CH, focused ? 0xFFFFFFFF : 0xFF242A33);
                 if (i == fingerCell) g.outline(x, y, CW, CH, ACCENT); // live: where the thumb is right now
                 int fg = focused ? BG : TEXT;
-                ControllerArt.glyph(g, font, DeckButton.gridCell(i), x + 4, y + 4);
-                ActionBinding b = cfg.getBinding(set, DeckButton.gridCell(i));
+                ControllerArt.glyph(g, font, btn, x + 4, y + 4);
+                ActionBinding b = cfg.getBinding(targetSet, btn);
                 String label = b.getAction() == DeckAction.NONE ? "--" : b.getDisplayLabel();
                 // up to two lines
                 List<net.minecraft.util.FormattedCharSequence> lines =
@@ -891,12 +958,16 @@ public class ControllerLayoutScreen extends Screen {
             {"Quests", 15}, {"Mod-Menü", 19}, {"Chat", 23}
     };
 
-    private enum EntryType { HEADER, ACTION, KEY, MAPPING, LISTEN, TOGGLE_HAPTIC, TOGGLE_REPEAT }
+    private enum EntryType { HEADER, ACTION, KEY, MAPPING, LISTEN, TOGGLE_HAPTIC, TOGGLE_REPEAT, SET_CHORD }
 
     /** {@code mapping}: key mapping name for MAPPING entries (e.g. "key.zoomify.zoom"). */
-    private record Entry(EntryType type, String text, DeckAction action, int keyCode, String mapping) {
+    private record Entry(EntryType type, String text, DeckAction action, int keyCode, String mapping, int chordKey) {
+        Entry(EntryType type, String text, DeckAction action, int keyCode, String mapping) {
+            this(type, text, action, keyCode, mapping, 0);
+        }
+
         Entry(EntryType type, String text, DeckAction action, int keyCode) {
-            this(type, text, action, keyCode, null);
+            this(type, text, action, keyCode, null, 0);
         }
 
         boolean selectable() { return type != EntryType.HEADER; }
@@ -912,6 +983,7 @@ public class ControllerLayoutScreen extends Screen {
 
         boolean open = false;
         boolean listening = false;
+        boolean listeningChord = false;
         DeckButton button;
         final List<Entry> entries = new ArrayList<>();
         /** Other inputs in this action set that already use an action / key ("ACTION" or "KEY:code"). */
@@ -952,6 +1024,7 @@ public class ControllerLayoutScreen extends Screen {
                 entries.add(new Entry(EntryType.TOGGLE_HAPTIC, "", null, 0));
                 // No hold-to-repeat for attack, use and mouse clicks (would be an autoclicker)
                 if (cur.allowsRepeat()) entries.add(new Entry(EntryType.TOGGLE_REPEAT, "", null, 0));
+                if (cur.isCustomKey()) entries.add(new Entry(EntryType.SET_CHORD, "", null, 0));
             }
             entries.add(new Entry(EntryType.ACTION, "-- Keine Aktion", DeckAction.NONE, 0));
             entries.add(new Entry(EntryType.HEADER, "SPIEL", null, 0));
@@ -994,6 +1067,9 @@ public class ControllerLayoutScreen extends Screen {
             for (Map.Entry<Integer, String> k : keys.entrySet()) {
                 entries.add(new Entry(EntryType.KEY, k.getValue(), DeckAction.CUSTOM_KEY, k.getKey()));
             }
+            // Built-in 2-key chord presets for Litematica / MaLiLib (M=16, C=6)
+            entries.add(new Entry(EntryType.KEY, "Litematica Menü", DeckAction.CUSTOM_KEY, 16, null, 0));
+            entries.add(new Entry(EntryType.KEY, "Litematica Config", DeckAction.CUSTOM_KEY, 6, null, 16));
 
             // Every key mapping from Minecraft's controls screen, other mods first (e.g. a zoom mod).
             // Pressed directly, so it works whatever key it is bound to (even unbound).
@@ -1101,6 +1177,17 @@ public class ControllerLayoutScreen extends Screen {
                     VirtualKeyboard.playClickSound();
                     return;
                 }
+                case SET_CHORD -> {
+                    if (cur.hasChordKey()) {
+                        ActionBinding cleared = cur.copyBase().withChordKey(0);
+                        cfg.setBinding(set, button, copyFlags(cleared, cur, cur.hasHaptic(), cur.hasRepeat()));
+                        rebuild();
+                    } else {
+                        listeningChord = true;
+                    }
+                    VirtualKeyboard.playClickSound();
+                    return;
+                }
                 case LISTEN -> {
                     listening = true;
                     VirtualKeyboard.playClickSound();
@@ -1112,7 +1199,7 @@ public class ControllerLayoutScreen extends Screen {
                             : copyFlags(nb, cur, cur.hasHaptic(), cur.hasRepeat()));
                 }
                 case KEY -> cfg.setBinding(set, button,
-                        copyFlags(new ActionBinding(e.keyCode(), e.text()), cur, cur.hasHaptic(), cur.hasRepeat()));
+                        copyFlags(new ActionBinding(e.keyCode(), e.text()).withChordKey(e.chordKey()), cur, cur.hasHaptic(), cur.hasRepeat()));
                 case MAPPING -> cfg.setBinding(set, button,
                         copyFlags(ActionBinding.forMapping(e.mapping()), cur, cur.hasHaptic(), cur.hasRepeat()));
                 default -> { return; }
@@ -1125,6 +1212,14 @@ public class ControllerLayoutScreen extends Screen {
         void assignKey(int key) {
             ModConfig cfg = ModConfig.getInstance();
             ActionBinding cur = cfg.getBinding(set, button);
+            if (listeningChord && cur.isCustomKey()) {
+                ActionBinding nb = cur.copyBase().withChordKey(key);
+                cfg.setBinding(set, button, copyFlags(nb, cur, cur.hasHaptic(), cur.hasRepeat()));
+                VirtualKeyboard.playClickSound();
+                showToast(button.getDisplayName() + " → " + cfg.getBinding(set, button).getDisplayLabel());
+                rebuild();
+                return;
+            }
             ActionBinding nb = new ActionBinding(key, "Taste " + ActionBinding.getKeyLabel(key));
             cfg.setBinding(set, button, copyFlags(nb, cur, cur.hasHaptic(), cur.hasRepeat()));
             VirtualKeyboard.playClickSound();
@@ -1174,7 +1269,10 @@ public class ControllerLayoutScreen extends Screen {
                 switch (e.type()) {
                     case TOGGLE_HAPTIC -> text = "Haptik beim Drücken: " + (cur.hasHaptic() ? "An" : "Aus");
                     case TOGGLE_REPEAT -> text = "Gedrückt halten = wiederholen: " + (cur.hasRepeat() ? "An" : "Aus");
-                    case KEY -> text = e.text() + " (" + ActionBinding.getKeyLabel(e.keyCode()) + ")";
+                    case SET_CHORD -> text = "Kombi-/Vor-Taste (Strg/Shift/M): "
+                            + (cur.hasChordKey() ? ActionBinding.getKeyLabel(cur.getChordKeyCode()) + " (Klick = Aus)" : "Aus");
+                    case KEY -> text = e.text() + " (" + (e.chordKey() > 0 ? ActionBinding.getKeyLabel(e.chordKey()) + "+" : "")
+                            + ActionBinding.getKeyLabel(e.keyCode()) + ")";
                     case MAPPING -> {
                         net.minecraft.client.KeyMapping km = net.minecraft.client.KeyMapping.get(e.mapping());
                         String bound = km == null || km.isUnbound() ? "nicht belegt" : km.getTranslatedKeyMessage().getString();
@@ -1184,7 +1282,7 @@ public class ControllerLayoutScreen extends Screen {
                 }
                 boolean isCurrent = !keyOf(e).isEmpty() && keyOf(e).equals(curKey);
                 if (isCurrent) text = "✓ " + text;
-                if (e.type() == EntryType.TOGGLE_HAPTIC || e.type() == EntryType.TOGGLE_REPEAT) {
+                if (e.type() == EntryType.TOGGLE_HAPTIC || e.type() == EntryType.TOGGLE_REPEAT || e.type() == EntryType.SET_CHORD) {
                     fg = focused ? BG : MODE_TEXT;
                 }
                 g.text(font, font.plainSubstrByWidth(text, PW - 110), PX + 12, y + 2, fg, false);
@@ -1210,13 +1308,14 @@ public class ControllerLayoutScreen extends Screen {
                 g.fill(PX + PW - 4, barY, PX + PW - 2, barY + barH, 0xFF5A626C);
             }
 
-            String hint = listening ? "Drücke jetzt eine Taste auf der Tastatur  •  Esc/B = Abbrechen"
+            boolean waitingKey = listening || listeningChord;
+            String hint = waitingKey ? "Drücke jetzt eine Taste auf der Tastatur  •  Esc/B = Abbrechen"
                     : "A wählen  •  B zurück  •  Symbole rechts = schon belegt in diesem Action-Set";
-            g.text(font, font.plainSubstrByWidth(hint, PW - 16), PX + 8, PY + PH - 12, listening ? 0xFFFFCC55 : DIM, false);
-            if (listening) {
+            g.text(font, font.plainSubstrByWidth(hint, PW - 16), PX + 8, PY + PH - 12, waitingKey ? 0xFFFFCC55 : DIM, false);
+            if (waitingKey) {
                 g.fill(PX + 30, PY + 90, PX + PW - 30, PY + 130, 0xFF0E141B);
                 g.fill(PX + 30, PY + 90, PX + PW - 30, PY + 91, 0xFFFFCC55);
-                String s = "Taste drücken …";
+                String s = listeningChord ? "Vor-/Modifier-Taste drücken (z. B. Strg, Shift, M) …" : "Taste drücken …";
                 g.text(font, s, PX + (PW - font.width(s)) / 2, PY + 106, 0xFFFFCC55, false);
             }
         }

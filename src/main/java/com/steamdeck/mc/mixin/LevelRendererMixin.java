@@ -19,7 +19,8 @@ public class LevelRendererMixin {
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/util/Util;backgroundExecutor()Lnet/minecraft/TracingExecutor;"
-            )
+            ),
+            require = 0
     )
     private TracingExecutor redirectChunkBackgroundExecutor() {
         TracingExecutor defaultExecutor = Util.backgroundExecutor();

@@ -18,7 +18,8 @@ public class TooltipMixin {
     @Inject(
             method = "positionTooltip(IIIIII)Lorg/joml/Vector2ic;",
             at = @At("RETURN"),
-            cancellable = true
+            cancellable = true,
+            require = 0
     )
     private void clampTooltipToScreen(
             int screenWidth, int screenHeight, int mouseX, int mouseY,

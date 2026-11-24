@@ -121,6 +121,9 @@ public class ModConfig {
     public boolean enableInventorySlotSnapping = true;
     public boolean enableControllerMenuHints = true;
     public boolean enableGameplayHaptics = true;
+    public boolean hapticOnDamage = true; // Impact rumble when taking damage / fall damage
+    public boolean hapticOnBlockBreak = true; // Tactile pop when a mined block breaks
+    public boolean hapticOnAttackHit = true; // Pulse when striking an entity or blocking with shield
     public boolean enableLowBatterySaver = true;
 
     // Gyro settings
@@ -388,6 +391,14 @@ public class ModConfig {
         return getBinding(set, button).getAction();
     }
 
+    /** True if at least one button in {@code set} is currently bound to {@code target}. */
+    public boolean hasActionInSet(ActionSet set, DeckAction target) {
+        for (DeckButton b : DeckButton.values()) {
+            if (getBinding(set, b).getAction() == target) return true;
+        }
+        return false;
+    }
+
     public void setBinding(ActionSet set, DeckButton button, ActionBinding binding) {
         if (actionSets == null) actionSets = new HashMap<>();
         Map<String, String> setMap = actionSets.computeIfAbsent(set.name(), k -> new HashMap<>());
@@ -512,7 +523,7 @@ public class ModConfig {
         this.rightTrackpadClickPressure = clamp(this.rightTrackpadClickPressure, 0.01f, 1.0f);
         this.leftTrackpadHapticLevel = Math.max(0, Math.min(5, this.leftTrackpadHapticLevel));
         this.rightTrackpadHapticLevel = Math.max(0, Math.min(5, this.rightTrackpadHapticLevel));
-        if (!java.util.Set.of("CAMERA", "BUTTON", "OFF").contains(this.centerTrackpadMode)) {
+        if (!java.util.Set.of("CAMERA", "BUTTON", "SPLIT_BUTTONS", "SCROLL_WHEEL", "OFF").contains(this.centerTrackpadMode)) {
             this.centerTrackpadMode = "CAMERA";
         }
         this.leftTriggerThreshold = clamp(this.leftTriggerThreshold, 0.05f, 0.95f);

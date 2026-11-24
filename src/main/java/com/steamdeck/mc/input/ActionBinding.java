@@ -12,10 +12,11 @@ public class ActionBinding {
     private final String customNickname;
     /** For KEY_MAPPING: the mapping's name, e.g. "key.jump" or "key.zoomify.zoom". */
     private final String mappingName;
-    // Steam-Input-style activator settings: hold to repeat (delay/rate in ms, 0 = off) and a haptic tick on press
+    // Steam-Input-style activator settings: hold to repeat (delay/rate in ms, 0 = off), haptic tick, and optional chord/modifier prefix key
     private int repeatDelayMs = 0;
     private int repeatRateMs = 0;
     private boolean haptic = false;
+    private int chordKeyCode = 0;
 
     public ActionBinding(DeckAction action) {
         this.action = action != null && action != DeckAction.KEY_MAPPING ? action : DeckAction.NONE;
@@ -53,9 +54,38 @@ public class ActionBinding {
 
     /** Same target (action / key / mapping) without haptic and repeat settings. */
     public ActionBinding copyBase() {
-        if (isCustomKey()) return new ActionBinding(customKeyCode, customNickname);
+        if (isCustomKey()) return new ActionBinding(customKeyCode, customNickname).withChordKey(chordKeyCode);
         if (isMapping()) return forMapping(mappingName);
         return new ActionBinding(action);
+    }
+
+    /** Optional prefix/modifier key held together with customKeyCode (e.g. Ctrl, Shift, Alt, or 'M' for Litematica M+C). */
+    public ActionBinding withChordKey(int chordKeyCode) {
+        this.chordKeyCode = Math.max(0, chordKeyCode);
+        return this;
+    }
+
+    public boolean hasChordKey() {
+        return isCustomKey() && chordKeyCode > 0 && chordKeyCode != customKeyCode;
+    }
+
+    public int getChordKeyCode() {
+        return chordKeyCode;
+    }
+
+    /** Standard modifier bitmask if chordKeyCode is Ctrl, Shift, or Alt. */
+    public int getModifiersForChord() {
+        if (!hasChordKey()) return 0;
+        if (chordKeyCode == InputConstants.KEY_LCONTROL || chordKeyCode == InputConstants.KEY_RCONTROL) {
+            return InputConstants.MOD_CONTROL;
+        }
+        if (chordKeyCode == InputConstants.KEY_LSHIFT || chordKeyCode == InputConstants.KEY_RSHIFT) {
+            return InputConstants.MOD_SHIFT;
+        }
+        if (chordKeyCode == InputConstants.KEY_LALT || chordKeyCode == InputConstants.KEY_RALT) {
+            return InputConstants.MOD_ALT;
+        }
+        return 0;
     }
 
     /**
@@ -132,7 +162,10 @@ public class ActionBinding {
     }
 
     public String getDisplayLabel() {
-        String label = isCustomKey() ? customNickname + " (" + getKeyLabel(customKeyCode) + ")"
+        String keyStr = hasChordKey()
+                ? getKeyLabel(chordKeyCode) + "+" + getKeyLabel(customKeyCode)
+                : getKeyLabel(customKeyCode);
+        String label = isCustomKey() ? customNickname + " (" + keyStr + ")"
                 : (isMapping() ? getMappingLabel() : action.getLabel());
         if (hasRepeat()) label += " ⟳";
         return label;
@@ -141,6 +174,7 @@ public class ActionBinding {
     public String serialize() {
         String base = isCustomKey() ? "KEY:" + customKeyCode + ":" + customNickname.replace("|", "/")
                 : (isMapping() ? "MAP:" + mappingName.replace("|", "/") : action.name());
+        if (hasChordKey()) base += "|chord=" + chordKeyCode;
         if (hasRepeat()) base += "|repeat=" + repeatDelayMs + "," + repeatRateMs;
         if (haptic) base += "|haptic";
         return base;
@@ -150,12 +184,16 @@ public class ActionBinding {
         if (serialized == null || serialized.isBlank()) {
             return new ActionBinding(DeckAction.NONE);
         }
-        // Optional activator settings: "ACTION|repeat=200,50|haptic"
+        // Optional activator settings: "ACTION|chord=16|repeat=200,50|haptic"
         String[] options = serialized.split("\\|");
         ActionBinding binding = deserializeBase(options[0]);
         for (int i = 1; i < options.length; i++) {
             String opt = options[i].trim();
-            if (opt.startsWith("repeat=")) {
+            if (opt.startsWith("chord=")) {
+                try {
+                    binding.withChordKey(Integer.parseInt(opt.substring(6).trim()));
+                } catch (Exception ignored) {}
+            } else if (opt.startsWith("repeat=")) {
                 try {
                     String[] v = opt.substring(7).split(",");
                     binding.withRepeat(Integer.parseInt(v[0].trim()), Integer.parseInt(v[1].trim()));

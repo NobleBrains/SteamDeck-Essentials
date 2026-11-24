@@ -43,7 +43,8 @@ public class BatteryHudRenderer {
                 && state != org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_CHARGED) {
             return; // wired without battery / unknown
         }
-        String text = "🎮 " + (percent >= 0 ? percent + "%" : "?")
+        String label = input.getActiveKind().getLabel();
+        String text = "🎮 " + label + ": " + (percent >= 0 ? percent + "%" : "?")
                 + (state == org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_CHARGING ? " ⚡" : "")
                 + (state == org.lwjgl.sdl.SDLPower.SDL_POWERSTATE_CHARGED ? " (voll)" : "");
         Font font = Minecraft.getInstance().font;
@@ -159,8 +160,10 @@ public class BatteryHudRenderer {
         ActionBinding bindY = cfg.getBinding(ActionSet.MENUS, DeckButton.Y);
         ActionBinding bindB = cfg.getBinding(ActionSet.MENUS, DeckButton.B);
 
-        String hint = String.format("[A] %s  •  [X] %s  •  [Y] %s  •  [B] %s  •  [D-Pad] Slot-Sprung",
-                bindA.getDisplayLabel(), bindX.getDisplayLabel(), bindY.getDisplayLabel(), bindB.getDisplayLabel());
+        String extra = (screen instanceof net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen)
+                ? "  •  [L1/R1] Tab" : "";
+        String hint = String.format("[A] %s  •  [X] %s  •  [Y] %s  •  [B] %s  •  [D-Pad] Slot-Sprung%s",
+                bindA.getDisplayLabel(), bindX.getDisplayLabel(), bindY.getDisplayLabel(), bindB.getDisplayLabel(), extra);
 
         int w = font.width(hint) + 10;
         int h = 13;

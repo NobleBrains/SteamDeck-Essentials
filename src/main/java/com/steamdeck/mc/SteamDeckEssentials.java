@@ -47,6 +47,11 @@ public class SteamDeckEssentials implements ClientModInitializer {
         ModConfig config = ModConfig.getInstance();
         PlatformDetector.getHardware();
         LOGGER.info("[SteamDeck Essentials] Device mode: {}", PlatformDetector.describe());
+        for (String otherMod : new String[]{"controlify", "midnightcontrols"}) {
+            if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(otherMod)) {
+                LOGGER.warn("[COMPAT] Detected another controller mod ('{}'). Running two controller mods simultaneously may cause duplicate inputs.", otherMod);
+            }
+        }
 
         // 1b. Initialize SDL Subsystems (Minecraft 26.3 only initializes SDL_INIT_VIDEO)
         try {

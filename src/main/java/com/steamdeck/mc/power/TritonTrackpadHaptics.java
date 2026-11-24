@@ -56,9 +56,13 @@ public final class TritonTrackpadHaptics {
      */
     public void setDevice(String sdlPath, int vendor, int product) {
         String path = null;
-        if (sdlPath != null && sdlPath.startsWith("/dev/hidraw")) {
-            path = sdlPath;
-        } else {
+        if (sdlPath != null && !sdlPath.isBlank()) {
+            if (sdlPath.startsWith("/dev/hidraw") || !System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux")) {
+                // On Windows/macOS SDL_GetGamepadPath() returns the native HID path usable by SDL_hid_open_path
+                path = sdlPath;
+            }
+        }
+        if (path == null) {
             path = findHidraw(vendor, product);
         }
         devicePath = path;
@@ -108,7 +112,29 @@ public final class TritonTrackpadHaptics {
         return true;
     }
 
+    private long sdlHidDevice = 0L;
+    private final java.nio.ByteBuffer sdlBuf = org.lwjgl.BufferUtils.createByteBuffer(8);
+
     private void write(String path, byte[] report) {
+        if (!path.startsWith("/dev/")) {
+            // Windows / macOS HIDAPI path via SDL3
+            try {
+                if (sdlHidDevice == 0L || !path.equals(openPath)) {
+                    closeQuietly();
+                    org.lwjgl.sdl.SDLHIDAPI.SDL_hid_init();
+                    sdlHidDevice = org.lwjgl.sdl.SDLHIDAPI.SDL_hid_open_path(path);
+                    openPath = path;
+                }
+                if (sdlHidDevice != 0L) {
+                    sdlBuf.clear();
+                    sdlBuf.put(report).flip();
+                    org.lwjgl.sdl.SDLHIDAPI.SDL_hid_write(sdlHidDevice, sdlBuf);
+                }
+            } catch (Throwable t) {
+                closeQuietly();
+            }
+            return;
+        }
         try {
             if (out == null || !path.equals(openPath)) {
                 closeQuietly();
@@ -126,6 +152,12 @@ public final class TritonTrackpadHaptics {
     }
 
     private void closeQuietly() {
+        if (sdlHidDevice != 0L) {
+            try {
+                org.lwjgl.sdl.SDLHIDAPI.SDL_hid_close(sdlHidDevice);
+            } catch (Throwable ignored) {}
+            sdlHidDevice = 0L;
+        }
         if (out != null) {
             try {
                 out.close();
