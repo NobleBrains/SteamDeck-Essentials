@@ -20,7 +20,7 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
-## 🚀 Version 1.0.0-beta.3
+## 🚀 Version 1.0.0-beta.4
 
 ### Neu
 * **Lautstärke und Helligkeit per Controller** (Minecrafts Gesamtlautstärke und Helligkeit, genau die Regler aus den Optionen, Helligkeit also max. 100 %). Beim Ändern erscheint oben ein Balken mit Prozentwert wie bei Steam. `options.txt` wird 1 s nach der letzten Änderung gespeichert.
