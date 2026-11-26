@@ -878,7 +878,7 @@ public class SteamDeckInputManager {
         repeatState.clear();
         activeHotbarDirection = 0;
         activeDpadNavButton = null;
-        menuShiftHeld = false;
+        heldModifierBits.clear();
         leftPadDpadWasDown = false;
         padPressureClick[0] = padPressureClick[1] = false;
         padPressure[0] = padPressure[1] = -1.0f;
@@ -896,6 +896,8 @@ public class SteamDeckInputManager {
 
         boolean wasDown = prevButtonStates.getOrDefault(button, false);
         prevButtonStates.put(button, isDown);
+        // Released: its Shift/Ctrl/Alt is no longer held, whichever binding or action set handles the release
+        if (!isDown) heldModifierBits.remove(button);
 
         // Physical click feel for trackpad presses (only native controllers; Steam Input does its own)
         if ((button == DeckButton.LEFT_TRACKPAD || button == DeckButton.RIGHT_TRACKPAD) && isDown != wasDown
@@ -1035,7 +1037,6 @@ public class SteamDeckInputManager {
         }
 
         ActionBinding binding = ModConfig.getInstance().getBinding(set, button);
-        if (!hasScreen) menuShiftHeld = false;
         // Safety fallback: never let the user lock themselves out of the Pause menu or out of closing a screen
         if (set == ActionSet.IN_GAME && button == DeckButton.START
                 && !ModConfig.getInstance().hasActionInSet(ActionSet.IN_GAME, DeckAction.PAUSE)) {
@@ -1067,6 +1068,10 @@ public class SteamDeckInputManager {
                 }
                 return;
             }
+        }
+        if (isDown && !wasDown) {
+            int mods = modifierBitsOf(binding, client);
+            if (mods != 0) heldModifierBits.put(button, mods);
         }
         executeBinding(binding, isDown, wasDown, client, hasScreen, false);
     }
@@ -1136,10 +1141,11 @@ public class SteamDeckInputManager {
                     if (repeat && !isDown) {
                         // a synthetic repeat sends one "repeat" key event (action 2) instead of release+press
                     } else if (repeat) {
-                        dispatchKey(client, 2, new KeyEvent(keyCode, keyCode, mods));
+                        dispatchKey(client, 2, new KeyEvent(keyCode, keyCode, mods | heldModifiers()));
                     } else if (isDown) {
-                        if (chord > 0) dispatchKey(client, 1, new KeyEvent(chord, chord, mods));
-                        dispatchKey(client, 1, new KeyEvent(keyCode, keyCode, mods));
+                        int held = mods | heldModifiers();
+                        if (chord > 0) dispatchKey(client, 1, new KeyEvent(chord, chord, held));
+                        dispatchKey(client, 1, new KeyEvent(keyCode, keyCode, held));
                     } else {
                         dispatchKey(client, 0, new KeyEvent(keyCode, keyCode, 0));
                         if (chord > 0) dispatchKey(client, 0, new KeyEvent(chord, chord, 0));
@@ -1178,7 +1184,7 @@ public class SteamDeckInputManager {
             case SPRINT -> pressMapping(client, client.options.keySprint, isDown, wasDown, hasScreen);
             case SNEAK -> {
                 if (hasScreen) {
-                    menuShiftHeld = isDown; // held Shift in inventories: clicks become shift-clicks
+                    // held Shift in inventories: clicks become shift-clicks (see heldModifiers())
                 } else {
                     setKeybindState(client.options.keyShift, isDown, wasDown);
                 }
@@ -1284,7 +1290,7 @@ public class SteamDeckInputManager {
                                 break;
                             }
                         }
-                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_LEFT, menuShiftHeld ? InputConstants.MOD_SHIFT : 0), isDown ? 1 : 0);
+                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_LEFT, heldModifiers()), isDown ? 1 : 0);
                     }
                 } else {
                     setKeybindState(client.options.keyAttack, isDown, wasDown);
@@ -1293,7 +1299,7 @@ public class SteamDeckInputManager {
             case MOUSE_RIGHT_CLICK -> {
                 if (hasScreen && client.getWindow() != null) {
                     if (isDown != wasDown) {
-                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_RIGHT, menuShiftHeld ? InputConstants.MOD_SHIFT : 0), isDown ? 1 : 0);
+                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_RIGHT, heldModifiers()), isDown ? 1 : 0);
                     }
                 } else {
                     setKeybindState(client.options.keyUse, isDown, wasDown);
@@ -1302,7 +1308,7 @@ public class SteamDeckInputManager {
             case MOUSE_MIDDLE_CLICK -> {
                 if (hasScreen && client.getWindow() != null) {
                     if (isDown != wasDown) {
-                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_MIDDLE, menuShiftHeld ? InputConstants.MOD_SHIFT : 0), isDown ? 1 : 0);
+                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_MIDDLE, heldModifiers()), isDown ? 1 : 0);
                     }
                 } else {
                     setKeybindState(client.options.keyPickItem, isDown, wasDown);
@@ -1311,7 +1317,7 @@ public class SteamDeckInputManager {
             case MOUSE_QUICK_MOVE -> {
                 if (hasScreen && client.getWindow() != null) {
                     if (isDown != wasDown) {
-                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_LEFT, InputConstants.MOD_SHIFT), isDown ? 1 : 0);
+                        client.mouseHandler.onButton(client.getWindow().handle(), new MouseButtonInfo(SDLMouse.SDL_BUTTON_LEFT, InputConstants.MOD_SHIFT | heldModifiers()), isDown ? 1 : 0);
                     }
                 }
             }
@@ -1546,9 +1552,10 @@ public class SteamDeckInputManager {
         long window = client.getWindow().handle();
         if (key.getType() == InputConstants.Type.MOUSE) {
             client.mouseHandler.onButton(window,
-                    new MouseButtonInfo(key.getValue(), menuShiftHeld ? InputConstants.MOD_SHIFT : 0), isDown ? 1 : 0);
+                    new MouseButtonInfo(key.getValue(), heldModifiers()), isDown ? 1 : 0);
         } else if (client.keyboardHandler != null) {
-            dispatchKey(client, isDown ? 1 : 0, new KeyEvent(key.getValue(), key.getValue(), 0));
+            // Held Shift/Ctrl/Alt go along like on a real keyboard (Ctrl+Q drops the whole stack)
+            dispatchKey(client, isDown ? 1 : 0, new KeyEvent(key.getValue(), key.getValue(), isDown ? heldModifiers() : 0));
         }
     }
 
@@ -1632,7 +1639,58 @@ public class SteamDeckInputManager {
     private final float[] padX = {0.5f, 0.5f};
     private final float[] padY = {0.5f, 0.5f};
     private boolean leftPadDpadWasDown = false;
-    private boolean menuShiftHeld = false;
+    /**
+     * Shift/Ctrl/Alt bits (GLFW MOD_*) per controller button that currently holds one: the Sneak/Sprint
+     * actions (their Minecraft keys, Shift/Ctrl by default), a custom Shift/Ctrl/Alt key, or a key mapping
+     * bound to one. Like a real held modifier key they go along with every click and key in screens, so
+     * Shift+click, Ctrl+Q and Ctrl/Shift with any other click work exactly as with keyboard and mouse.
+     */
+    private final Map<DeckButton, Integer> heldModifierBits = new EnumMap<>(DeckButton.class);
+
+    /** Modifier bits currently held via controller buttons (0 if none). */
+    public int heldModifiers() {
+        int bits = 0;
+        for (int b : heldModifierBits.values()) bits |= b;
+        return bits;
+    }
+
+    private static int modifierBitForKey(int keyCode) {
+        return switch (keyCode) {
+            case InputConstants.KEY_LSHIFT, InputConstants.KEY_RSHIFT -> InputConstants.MOD_SHIFT;
+            case InputConstants.KEY_LCONTROL, InputConstants.KEY_RCONTROL -> InputConstants.MOD_CONTROL;
+            case InputConstants.KEY_LALT, InputConstants.KEY_RALT -> InputConstants.MOD_ALT;
+            default -> 0;
+        };
+    }
+
+    private static int modifierBitOfMapping(KeyMapping mapping) {
+        if (mapping == null) return 0;
+        InputConstants.Key key = ((KeyMappingAccessor) mapping).getKey();
+        if (key == null || key.getType() == InputConstants.Type.MOUSE) return 0;
+        return modifierBitForKey(key.getValue());
+    }
+
+    /** Which modifier keys a binding holds down while its button is held. */
+    private static int modifierBitsOf(ActionBinding binding, Minecraft client) {
+        try {
+            if (binding.isCustomKey()) {
+                return modifierBitForKey(binding.getCustomKeyCode())
+                        | (binding.hasChordKey() ? modifierBitForKey(binding.getChordKeyCode()) : 0);
+            }
+            if (binding.isMapping()) return modifierBitOfMapping(KeyMapping.get(binding.getMappingName()));
+            if (client == null || client.options == null) return 0;
+            return switch (binding.getAction()) {
+                case SNEAK -> {
+                    int bit = modifierBitOfMapping(client.options.keyShift);
+                    yield bit != 0 ? bit : InputConstants.MOD_SHIFT; // "Shift halten", as before
+                }
+                case SPRINT -> modifierBitOfMapping(client.options.keySprint);
+                default -> 0;
+            };
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
     // Hold-to-repeat state per button (Steam "hold_repeats")
     private final Map<DeckButton, long[]> repeatState = new EnumMap<>(DeckButton.class);
     private final boolean[] padPressureClick = {false, false};

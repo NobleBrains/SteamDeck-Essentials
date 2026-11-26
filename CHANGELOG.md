@@ -20,6 +20,13 @@ Dieses Dokument führt alle technischen Änderungen mit ausführlicher Begründu
 
 ---
 
+## 🚀 Version 1.0.0-beta.5
+
+### Neu
+* **Shift- und Strg-Klick in Inventaren mit jeder Belegung.** Bisher wurde ein Klick nur zum Shift-Klick, wenn die Aktion „Schleichen“ gehalten wurde. Jetzt gilt jede Controller-Taste, die Shift, Strg oder Alt hält, als gehaltene Modifier-Taste, genau wie auf der Tastatur: die Aktionen „Schleichen“ (Shift) und „Sprinten“ (Strg, bzw. die Taste, auf der diese Minecraft-Belegungen liegen), eine eigene Taste Shift/Strg/Alt (auch als Kombi-Vortaste) und Minecraft-/Mod-Belegungen auf einer dieser Tasten. Die Modifier gehen bei jedem Klick (links/rechts/mittel, Schnell-Transfer) und jedem Tastendruck in Menüs mit, z. B. Shift+Klick = Schnell-Transfer, Strg+Q = ganzen Stapel werfen, Shift+Doppelklick = alle gleichen Items verschieben. Auch Vanilla-Abfragen der echten Tasten (`Minecraft.hasShiftDown/hasControlDown/hasAltDown`, z. B. im Rezeptbuch und bei Tooltips) sehen die gehaltene Controller-Taste. Eine Taste, die im Spiel gedrückt und beim Öffnen des Inventars weiter gehalten wird, zählt weiter (wie eine gehaltene Tastatur-Taste). Beim Loslassen gilt der Modifier sofort nicht mehr, egal in welchem Kontext losgelassen wird.
+
+---
+
 ## 🚀 Version 1.0.0-beta.4
 
 ### Neu

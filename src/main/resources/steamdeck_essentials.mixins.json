@@ -17,7 +17,8 @@
     "AbstractContainerScreenAccessor",
     "CreativeModeInventoryScreenAccessor",
     "HudMixin",
-    "KeyboardHandlerMixin"
+    "KeyboardHandlerMixin",
+    "MinecraftModifierKeysMixin"
   ],
   "injectors": {
     "defaultRequire": 1
