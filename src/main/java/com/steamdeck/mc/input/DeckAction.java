@@ -77,6 +77,55 @@ public enum DeckAction {
         return description;
     }
 
+    /**
+     * Label as shown for {@code set}. In menus many actions do something else than in-game (their key
+     * goes to the open screen like on a keyboard), so the menu set names what they do there.
+     */
+    public String getLabel(ActionSet set) {
+        if (set != ActionSet.MENUS) return label;
+        return switch (this) {
+            case SNEAK -> "Shift halten";
+            case SPRINT -> "Strg halten";
+            case ATTACK -> "Linksklick";
+            case USE -> "Rechtsklick";
+            case PICK_BLOCK -> "Mittelklick";
+            case DROP -> "Item werfen (Q)";
+            case INVENTORY -> "Inventar schließen (E)";
+            case SWAP_OFFHAND -> "Mit Zweithand tauschen";
+            case HOTBAR_PREV -> "Tab / Liste zurück";
+            case HOTBAR_NEXT -> "Tab / Liste vor";
+            case PAUSE -> "Menü schließen (Esc)";
+            case HOTBAR_SLOT_1, HOTBAR_SLOT_2, HOTBAR_SLOT_3, HOTBAR_SLOT_4, HOTBAR_SLOT_5,
+                 HOTBAR_SLOT_6, HOTBAR_SLOT_7, HOTBAR_SLOT_8, HOTBAR_SLOT_9 -> "Nach Slot " + (hotbarSlot() + 1) + " tauschen";
+            case SNEAK_TOGGLE, TOGGLE_DEBUG, RADIAL_MENU_CYCLE -> label + " (im Menü aus)";
+            default -> label;
+        };
+    }
+
+    /** Help text for {@code set}, see {@link #getLabel(ActionSet)}. */
+    public String getDescription(ActionSet set) {
+        if (set != ActionSet.MENUS) return description;
+        return switch (this) {
+            case SNEAK -> "Shift: Klick = Stapel schnell verschieben, Doppelklick = alle gleichen Items";
+            case SPRINT -> "Strg: mit Item werfen (Q) den ganzen Stapel werfen";
+            case ATTACK -> "Linksklick: Stapel nehmen/ablegen, gedrückt ziehen = verteilen";
+            case USE -> "Rechtsklick: halben Stapel nehmen / ein Item ablegen";
+            case PICK_BLOCK -> "Mittelklick: im Kreativmodus vollen Stapel nehmen";
+            case DROP -> "Q über einem Slot: ein Item werfen, mit Strg den ganzen Stapel";
+            case INVENTORY -> "E: Inventar oder Kiste schließen";
+            case SWAP_OFFHAND -> "F über einem Slot: Item mit der Zweithand tauschen";
+            case HOTBAR_PREV -> "Kreativ: vorheriger Tab, sonst Liste scrollen";
+            case HOTBAR_NEXT -> "Kreativ: nächster Tab, sonst Liste scrollen";
+            case PAUSE -> "Escape: schließt das Menü";
+            case HOTBAR_SLOT_1, HOTBAR_SLOT_2, HOTBAR_SLOT_3, HOTBAR_SLOT_4, HOTBAR_SLOT_5,
+                 HOTBAR_SLOT_6, HOTBAR_SLOT_7, HOTBAR_SLOT_8, HOTBAR_SLOT_9 ->
+                    "Zahlentaste " + (hotbarSlot() + 1) + ": Item unter dem Zeiger mit Hotbar-Slot " + (hotbarSlot() + 1) + " tauschen";
+            case SNEAK_TOGGLE -> "Umschalten wirkt nur im Spiel; im Menü Schleichen (Shift halten) nehmen";
+            case TOGGLE_DEBUG, RADIAL_MENU_CYCLE -> "Wirkt nur im Spiel";
+            default -> description;
+        };
+    }
+
     /** 0..8 for HOTBAR_SLOT_1..9, -1 otherwise. */
     public int hotbarSlot() {
         int i = ordinal() - HOTBAR_SLOT_1.ordinal();

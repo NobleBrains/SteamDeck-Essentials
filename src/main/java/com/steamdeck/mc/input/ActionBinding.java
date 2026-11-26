@@ -162,11 +162,16 @@ public class ActionBinding {
     }
 
     public String getDisplayLabel() {
+        return getDisplayLabel(ActionSet.IN_GAME);
+    }
+
+    /** Label for this binding in {@code set} (menu actions are named after what they do in menus). */
+    public String getDisplayLabel(ActionSet set) {
         String keyStr = hasChordKey()
                 ? getKeyLabel(chordKeyCode) + "+" + getKeyLabel(customKeyCode)
                 : getKeyLabel(customKeyCode);
         String label = isCustomKey() ? customNickname + " (" + keyStr + ")"
-                : (isMapping() ? getMappingLabel() : action.getLabel());
+                : (isMapping() ? getMappingLabel() : action.getLabel(set));
         if (hasRepeat()) label += " ⟳";
         return label;
     }

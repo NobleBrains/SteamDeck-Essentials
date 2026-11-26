@@ -163,7 +163,7 @@ public class BatteryHudRenderer {
         String extra = (screen instanceof net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen)
                 ? "  •  [L1/R1] Tab" : "";
         String hint = String.format("[A] %s  •  [X] %s  •  [Y] %s  •  [B] %s  •  [D-Pad] Slot-Sprung%s",
-                bindA.getDisplayLabel(), bindX.getDisplayLabel(), bindY.getDisplayLabel(), bindB.getDisplayLabel(), extra);
+                bindA.getDisplayLabel(ActionSet.MENUS), bindX.getDisplayLabel(ActionSet.MENUS), bindY.getDisplayLabel(ActionSet.MENUS), bindB.getDisplayLabel(ActionSet.MENUS), extra);
 
         int w = font.width(hint) + 10;
         int h = 13;

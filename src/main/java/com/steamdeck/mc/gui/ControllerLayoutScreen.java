@@ -233,7 +233,7 @@ public class ControllerLayoutScreen extends Screen {
     private String bindingLabel(DeckButton b) {
         ActionBinding binding = ModConfig.getInstance().getBinding(set, b);
         if (binding.getAction() == DeckAction.NONE) return "--";
-        return binding.getDisplayLabel();
+        return binding.getDisplayLabel(set);
     }
 
     // ==========================================================================================
@@ -418,7 +418,7 @@ public class ControllerLayoutScreen extends Screen {
             ActionBinding b = ModConfig.getInstance().getBinding(set, focus.button());
             help = focus.button().getDisplayName() + ": " + (b.getAction() == DeckAction.NONE ? "nicht belegt"
                     : (b.isCustomKey() ? "Tastatur-Taste " + ActionBinding.getKeyLabel(b.getCustomKeyCode())
-                    : (b.isMapping() ? mappingHelp(b) : b.getAction().getDescription())))
+                    : (b.isMapping() ? mappingHelp(b) : b.getAction().getDescription(set))))
                     + (b.hasHaptic() ? "  •  Haptik" : "") + (b.hasRepeat() ? "  •  Halten wiederholt" : "");
         }
         g.text(font, font.plainSubstrByWidth(help, W - 16), (W - Math.min(W - 16, font.width(help))) / 2, H - 30, DIM, false);
@@ -935,7 +935,7 @@ public class ControllerLayoutScreen extends Screen {
                 int fg = focused ? BG : TEXT;
                 ControllerArt.glyph(g, font, btn, x + 4, y + 4);
                 ActionBinding b = cfg.getBinding(targetSet, btn);
-                String label = b.getAction() == DeckAction.NONE ? "--" : b.getDisplayLabel();
+                String label = b.getAction() == DeckAction.NONE ? "--" : b.getDisplayLabel(targetSet);
                 // up to two lines
                 List<net.minecraft.util.FormattedCharSequence> lines =
                         font.split(net.minecraft.network.chat.Component.literal(label), CW - 8);
@@ -1033,23 +1033,23 @@ public class ControllerLayoutScreen extends Screen {
                     DeckAction.SWAP_OFFHAND, DeckAction.PICK_BLOCK, DeckAction.HOTBAR_PREV, DeckAction.HOTBAR_NEXT,
                     DeckAction.TOGGLE_PERSPECTIVE, DeckAction.OPEN_CHAT, DeckAction.TOGGLE_DEBUG,
                     DeckAction.PAUSE, DeckAction.RADIAL_MENU_CYCLE}) {
-                entries.add(new Entry(EntryType.ACTION, a.getLabel(), a, 0));
+                entries.add(new Entry(EntryType.ACTION, a.getLabel(set), a, 0));
             }
             entries.add(new Entry(EntryType.HEADER, "HOTBAR DIREKT", null, 0));
             for (int slot = 0; slot < 9; slot++) {
                 DeckAction a = DeckAction.hotbarSlot(slot);
-                entries.add(new Entry(EntryType.ACTION, a.getLabel(), a, 0));
+                entries.add(new Entry(EntryType.ACTION, a.getLabel(set), a, 0));
             }
             entries.add(new Entry(EntryType.HEADER, "LAUTSTÄRKE & HELLIGKEIT", null, 0));
             for (DeckAction a : new DeckAction[]{DeckAction.VOLUME_UP, DeckAction.VOLUME_DOWN,
                     DeckAction.BRIGHTNESS_UP, DeckAction.BRIGHTNESS_DOWN}) {
-                entries.add(new Entry(EntryType.ACTION, a.getLabel(), a, 0));
+                entries.add(new Entry(EntryType.ACTION, a.getLabel(set), a, 0));
             }
             entries.add(new Entry(EntryType.HEADER, "MAUS & MENÜ", null, 0));
             for (DeckAction a : new DeckAction[]{DeckAction.MOUSE_LEFT_CLICK, DeckAction.MOUSE_RIGHT_CLICK,
                     DeckAction.MOUSE_MIDDLE_CLICK, DeckAction.MOUSE_QUICK_MOVE, DeckAction.MOUSE_SCROLL_UP,
                     DeckAction.MOUSE_SCROLL_DOWN, DeckAction.CLOSE_SCREEN}) {
-                entries.add(new Entry(EntryType.ACTION, a.getLabel(), a, 0));
+                entries.add(new Entry(EntryType.ACTION, a.getLabel(set), a, 0));
             }
             entries.add(new Entry(EntryType.HEADER, "TASTATUR", null, 0));
             entries.add(new Entry(EntryType.LISTEN, "Taste auf der Tastatur drücken …", null, 0));
@@ -1205,7 +1205,7 @@ public class ControllerLayoutScreen extends Screen {
                 default -> { return; }
             }
             VirtualKeyboard.playClickSound();
-            showToast(button.getDisplayName() + " → " + cfg.getBinding(set, button).getDisplayLabel());
+            showToast(button.getDisplayName() + " → " + cfg.getBinding(set, button).getDisplayLabel(set));
             open = false;
         }
 
@@ -1216,14 +1216,14 @@ public class ControllerLayoutScreen extends Screen {
                 ActionBinding nb = cur.copyBase().withChordKey(key);
                 cfg.setBinding(set, button, copyFlags(nb, cur, cur.hasHaptic(), cur.hasRepeat()));
                 VirtualKeyboard.playClickSound();
-                showToast(button.getDisplayName() + " → " + cfg.getBinding(set, button).getDisplayLabel());
+                showToast(button.getDisplayName() + " → " + cfg.getBinding(set, button).getDisplayLabel(set));
                 rebuild();
                 return;
             }
             ActionBinding nb = new ActionBinding(key, "Taste " + ActionBinding.getKeyLabel(key));
             cfg.setBinding(set, button, copyFlags(nb, cur, cur.hasHaptic(), cur.hasRepeat()));
             VirtualKeyboard.playClickSound();
-            showToast(button.getDisplayName() + " → " + nb.getDisplayLabel());
+            showToast(button.getDisplayName() + " → " + nb.getDisplayLabel(set));
             open = false;
         }
 
